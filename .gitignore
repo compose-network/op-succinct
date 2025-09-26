@@ -50,3 +50,10 @@ configs/
 **/codegen
 # Grafana alloy config
 config.alloy
+
+.env
+
+.idea
+
+vendor/
+contracts/foundry.lock

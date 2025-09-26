@@ -25,6 +25,7 @@ anyhow.workspace = true
 dotenv.workspace = true
 csv.workspace = true
 tracing.workspace = true
+tracing-subscriber = "0.3"
 
 # local
 op-succinct-host-utils.workspace = true
@@ -48,5 +49,4 @@ op-succinct-build-utils.workspace = true
 
 [features]
 default = ["ethereum"]
-celestia = ["op-succinct-proof-utils/celestia"]
 ethereum = ["op-succinct-proof-utils/ethereum"]

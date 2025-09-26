@@ -11,19 +11,30 @@ sp1_zkvm::entrypoint!(main);
 
 use op_succinct_client_utils::witness::DefaultWitnessData;
 use op_succinct_ethereum_client_utils::executor::ETHDAWitnessExecutor;
-use op_succinct_range_utils::run_range_program;
-#[cfg(feature = "tracing-subscriber")]
-use op_succinct_range_utils::setup_tracing;
+use op_succinct_range_utils::{run_range_program, setup_tracing};
 use rkyv::rancor::Error;
 
 fn main() {
-    #[cfg(feature = "tracing-subscriber")]
     setup_tracing();
 
     kona_proof::block_on(async move {
         let witness_rkyv_bytes: Vec<u8> = sp1_zkvm::io::read_vec();
         let witness_data = rkyv::from_bytes::<DefaultWitnessData, Error>(&witness_rkyv_bytes)
-            .expect("Failed to deserialize witness data.");
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to deserialize witness data!!!");
+                eprintln!("Error: {}", e);
+                
+                // Print error chain/causes
+                let mut current_error = &e as &dyn std::error::Error;
+                let mut error_level = 0;
+                while let Some(source) = current_error.source() {
+                    error_level += 1;
+                    eprintln!("  Caused by ({}): {}", error_level, source);
+                    current_error = source;
+                }
+                
+                panic!("Failed to deserialize witness data: {}", e);
+            });
 
         run_range_program(ETHDAWitnessExecutor::new(), witness_data).await;
     });

@@ -77,5 +77,4 @@ which = "4.4"
 
 [features]
 default = ["ethereum"]
-celestia = ["op-succinct-proof-utils/celestia"]
 ethereum = ["op-succinct-proof-utils/ethereum"]

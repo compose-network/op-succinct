@@ -2,7 +2,7 @@ use alloy_primitives::{Address, B256};
 use alloy_sol_types::sol;
 use serde::{Deserialize, Serialize};
 
-use crate::boot::BootInfoStruct;
+use crate::boot::{BootInfoStruct, MailboxInfoStruct};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AggregationInputs {
@@ -20,6 +20,8 @@ sol! {
         bytes32 l2PostRoot;
         uint64 l2BlockNumber;
         bytes32 rollupConfigHash;
+        bytes32 mailboxRoot;
+        MailboxInfoStruct mailboxInfo;
         bytes32 multiBlockVKey;
         address proverAddress;
     }

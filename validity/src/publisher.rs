@@ -1,6 +1,7 @@
 use alloy_primitives::{Address, FixedBytes, B256};
 use anyhow::{Context, Result};
 use op_succinct_client_utils::types::AggregationOutputs;
+use op_succinct_client_utils::boot::MailboxInfoStruct;
 use reqwest::Url;
 use serde::Serialize;
 use sp1_sdk::SP1VerifyingKey;
@@ -26,6 +27,8 @@ pub fn build_aggregation_outputs(
     l2_post_root: B256,
     l2_block_number: u64,
     rollup_config_hash: B256,
+    mailboxRoot: B256,
+    mailboxInfo: MailboxInfoStruct,
     multi_block_vkey: B256,
     prover_address: Address,
 ) -> AggregationOutputs {
@@ -35,6 +38,8 @@ pub fn build_aggregation_outputs(
         l2PostRoot: l2_post_root,
         l2BlockNumber: l2_block_number,
         rollupConfigHash: rollup_config_hash,
+        mailboxRoot: mailboxRoot,
+        mailboxInfo: mailboxInfo,
         multiBlockVKey: multi_block_vkey,
         proverAddress: prover_address,
     }

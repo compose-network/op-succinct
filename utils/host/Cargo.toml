@@ -26,8 +26,6 @@ kona-proof.workspace = true
 kona-protocol.workspace = true
 kona-rpc.workspace = true
 
-# hana
-hana-host.workspace = true
 
 # alloy
 alloy-consensus.workspace = true
@@ -44,6 +42,7 @@ async-trait.workspace = true
 cfg-if.workspace = true
 c-kzg.workspace = true
 futures.workspace = true
+hex.workspace = true
 kzg-rs.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true

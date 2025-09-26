@@ -30,9 +30,4 @@ pub fn build_all() {
     // build_program("aggregation", "aggregation-elf", None);
     // build_program("range/ethereum", "range-elf-bump", None);
     // build_program("range/ethereum", "range-elf-embedded", Some(vec!["embedded".to_string()]));
-    // build_program(
-    //     "range/celestia",
-    //     "celestia-range-elf-embedded",
-    //     Some(vec!["embedded".to_string()]),
-    // );
 }

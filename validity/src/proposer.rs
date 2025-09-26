@@ -6,6 +6,8 @@ use alloy_provider::{network::ReceiptResponse, Provider};
 use anyhow::{anyhow, Context, Result};
 use futures_util::{stream, StreamExt, TryStreamExt};
 use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
+use op_succinct_client_utils::boot::MailboxInfoStruct;
+
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher, host::OPSuccinctHost, metrics::MetricsGauge,
@@ -950,12 +952,23 @@ where
                     .as_ref()
                     .expect("agg proof must have checkpointed l1 block hash"),
             );
+
+            // TODO: remove mocks
+            let mailbox_root = B256::ZERO;
+            let mailbox_info = MailboxInfoStruct {
+                inbox_chains: vec![],
+                outbox_chains: vec![],
+                inbox_roots: vec![],
+                outbox_roots: vec![],
+            };
             let agg_outputs = build_aggregation_outputs(
                 l1_head,
                 pre_output.output_root.0.into(),
                 post_root_b256,
                 end_block,
                 self.program_config.commitments.rollup_config_hash,
+                mailbox_root,
+                mailbox_info,
                 self.program_config.commitments.range_vkey_commitment,
                 self.requester_config.prover_address,
             );

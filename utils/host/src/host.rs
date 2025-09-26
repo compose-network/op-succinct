@@ -1,7 +1,6 @@
 use alloy_primitives::B256;
 use anyhow::Result;
 use async_trait::async_trait;
-use hana_host::celestia::CelestiaChainHost;
 use kona_host::single::{SingleChainHost, SingleChainHostError};
 use kona_preimage::{BidirectionalChannel, Channel};
 use tokio::task::JoinHandle;
@@ -33,19 +32,6 @@ impl PreimageServerStarter for SingleChainHost {
     }
 }
 
-#[async_trait]
-impl PreimageServerStarter for CelestiaChainHost {
-    async fn start_server<C>(
-        &self,
-        hint: C,
-        preimage: C,
-    ) -> Result<JoinHandle<Result<(), SingleChainHostError>>, SingleChainHostError>
-    where
-        C: Channel + Send + Sync + 'static,
-    {
-        self.start_server(hint, preimage).await
-    }
-}
 
 #[async_trait]
 pub trait OPSuccinctHost: Send + Sync + 'static {
@@ -97,7 +83,6 @@ pub trait OPSuccinctHost: Send + Sync + 'static {
     /// included in a range proof.
     ///
     /// For ETH DA, this is the finalized L2 block number.
-    /// For Celestia, this is the highest L2 block included in the latest Blobstream commitment.
     ///
     /// The latest proposed block number is assumed to be the highest block number that has been
     /// successfully processed by the host.
@@ -111,7 +96,6 @@ pub trait OPSuccinctHost: Send + Sync + 'static {
     ///
     /// This method is DA-specific:
     /// - For ETH DA: Uses simple offset logic.
-    /// - For Celestia DA: Uses blobstream commitment logic to ensure data availability.
     ///
     /// Parameters:
     /// - `fetcher`: The data fetcher for accessing blockchain data.

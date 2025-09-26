@@ -5,11 +5,12 @@ use clap::Parser;
 use op_succinct_client_utils::{boot::BootInfoStruct, types::u32_to_u8};
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_host_utils::{fetcher::OPSuccinctDataFetcher, get_agg_proof_stdin};
-use op_succinct_proof_utils::get_range_elf_embedded;
+use op_succinct_proof_utils::{get_range_elf_embedded, GuestLogBridge};
 use sp1_sdk::{
     utils, HashableKey, Prover, ProverClient, SP1Proof, SP1ProofWithPublicValues, SP1VerifyingKey,
 };
 use std::fs;
+use tracing::Level;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -94,8 +95,15 @@ async fn main() -> Result<()> {
     if args.prove {
         prover.prove(&agg_pk, &stdin).groth16().run().expect("proving failed");
     } else {
-        let (_, report) =
-            prover.execute(AGGREGATION_ELF, &stdin).calculate_gas(true).run().unwrap();
+        // let mut stdout_bridge = GuestLogBridge::new(Level::INFO, "sp1::stdout");
+        // let mut stderr_bridge = GuestLogBridge::new(Level::WARN, "sp1::stderr");
+        let (_, report) = prover
+            .execute(AGGREGATION_ELF, &stdin)
+            .calculate_gas(true)
+            // .stdout(&mut stdout_bridge)
+            // .stderr(&mut stderr_bridge)
+            .run()
+            .unwrap();
         println!("report: {report:?}");
     }
 

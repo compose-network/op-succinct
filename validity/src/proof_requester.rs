@@ -7,16 +7,14 @@ use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher, get_agg_proof_stdin, host::OPSuccinctHost,
     metrics::MetricsGauge, witness_generation::WitnessGenerator,
 };
-use op_succinct_proof_utils::get_range_elf_embedded;
+use op_succinct_proof_utils::{get_range_elf_embedded, GuestLogBridge};
 use sp1_sdk::{
     network::{proto::types::ExecutionStatus, FulfillmentStrategy},
     NetworkProver, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin, SP1_CIRCUIT_VERSION,
 };
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tracing::{info, warn};
+use std::{sync::Arc, time::Instant, time::Duration};
+use tracing::{info, warn, Level};
+
 
 use crate::{
     db::DriverDBClient, OPSuccinctRequest, ProgramConfig, RequestExecutionStatistics,
@@ -233,7 +231,14 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         let network_prover = self.network_prover.clone();
         // Move the CPU-intensive operation to a dedicated thread.
         let (pv, report) = match tokio::task::spawn_blocking(move || {
-            network_prover.execute(get_range_elf_embedded(), &stdin).calculate_gas(true).run()
+            // let mut stdout_bridge = GuestLogBridge::new(Level::INFO, "sp1::stdout");
+            // let mut stderr_bridge = GuestLogBridge::new(Level::WARN, "sp1::stderr");
+            network_prover
+                .execute(get_range_elf_embedded(), &stdin)
+                .calculate_gas(true)
+                // .stdout(&mut stdout_bridge)
+                // .stderr(&mut stderr_bridge)
+                .run()
         })
         .await?
         {
@@ -284,10 +289,14 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         let network_prover = self.network_prover.clone();
         // Move the CPU-intensive operation to a dedicated thread.
         let (pv, report) = match tokio::task::spawn_blocking(move || {
+            // let mut stdout_bridge = GuestLogBridge::new(Level::INFO, "sp1::stdout");
+            // let mut stderr_bridge = GuestLogBridge::new(Level::WARN, "sp1::stderr");
             network_prover
                 .execute(AGGREGATION_ELF, &stdin)
                 .calculate_gas(true)
                 .deferred_proof_verification(false)
+                // .stdout(&mut stdout_bridge)
+                // .stderr(&mut stderr_bridge)
                 .run()
         })
         .await?

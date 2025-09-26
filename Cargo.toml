@@ -3,8 +3,6 @@ members = [
     "utils/client",
     "utils/host",
     "utils/build",
-    "utils/celestia/client",
-    "utils/celestia/host",
     "utils/proof",
     "utils/signer",
     "utils/ethereum/client",
@@ -93,12 +91,6 @@ kona-protocol = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.0
 kona-registry = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.0.2", default-features = false }
 kona-genesis = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.0.2", default-features = false }
 
-# hana
-# TODO(fakedev9999): Bump to 1.0.0 once the release is out.
-hana-blobstream = { git = "https://github.com/celestiaorg/hana", tag = "v0.1.0-beta.17" }
-hana-celestia = { git = "https://github.com/celestiaorg/hana", tag = "v0.1.0-beta.17" }
-hana-host = { git = "https://github.com/celestiaorg/hana", tag = "v0.1.0-beta.17" }
-hana-oracle = { git = "https://github.com/celestiaorg/hana", tag = "v0.1.0-beta.17" }
 
 # op-succinct
 op-succinct-prove = { path = "scripts/prove" }
@@ -110,8 +102,6 @@ op-succinct-validity = { path = "validity" }
 op-succinct-fp = { path = "fault-proof" }
 op-succinct-ethereum-client-utils = { path = "utils/ethereum/client" }
 op-succinct-ethereum-host-utils = { path = "utils/ethereum/host" }
-op-succinct-celestia-client-utils = { path = "utils/celestia/client" }
-op-succinct-celestia-host-utils = { path = "utils/celestia/host" }
 op-succinct-proof-utils = { path = "utils/proof" }
 op-succinct-signer-utils = { path = "utils/signer" }
 op-succinct-range-utils = { path = "programs/range/utils" }

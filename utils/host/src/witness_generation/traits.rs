@@ -60,8 +60,8 @@ fn get_map_storage_key(slot: u64, key: u64) -> [u8; 32] {
 async fn extract_contract_storage_data(
     contract_addr: Address,
     block_number: u64,
+    rpc_url: &str,
 ) -> Result<(Vec<Bytes32>, Vec<Bytes32>, Vec<Bytes32>, Vec<Bytes32>)> {
-    let rpc_url = "http://57.129.73.156:31130";
     let client = reqwest::Client::new();
 
     println!("extract_contract_storage_data for {} block number", block_number);
@@ -351,10 +351,12 @@ pub trait WitnessGenerator {
                 .unwrap();
             self.get_executor().run(boot_info.clone(), pipeline, cursor, l2_provider.clone()).await.unwrap();
         }
+        let contract_addr_str = std::env::var("MAILBOX_ADDRESS").expect("MAILBOX_ADDRESS environment variable must be set");
+        let contract_addr = contract_addr_str.parse::<Address>().unwrap();
+        let l2_rpc_url = std::env::var("L2_RPC").expect("L2_RPC environment variable must be set");
 
-        let contract_addr = "0xD74CA64401349626711A81b7473C3649BAAc6886".parse::<Address>().unwrap();
-
-        let mailbox_store = match extract_contract_storage_data(contract_addr, boot_info.claimed_l2_block_number).await {
+        println!("Query mailbox info from {} contract addr, {} L2_RPC", contract_addr_str, l2_rpc_url);
+        let mailbox_store = match extract_contract_storage_data(contract_addr, boot_info.claimed_l2_block_number, &l2_rpc_url).await {
             Ok((ic, oc, ir, or)) => {
                 Arc::new(Mutex::new(MailboxStore::new(ic, oc, ir, or)))
             }

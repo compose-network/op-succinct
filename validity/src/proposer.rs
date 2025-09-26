@@ -490,7 +490,7 @@ where
             .await?;
 
         if active_agg_proofs_count > 0 {
-            tracing::debug!("There is already an Aggregation proof queued with the same start block, range vkey commitment, and aggregation vkey.");
+            info!("There is already an Aggregation proof queued with the same start block, range vkey commitment, and aggregation vkey.");
             return Ok(());
         }
 
@@ -528,7 +528,7 @@ where
         let submission_interval =
             contract_submission_interval.max(self.requester_config.submission_interval) as i64;
 
-        debug!("Submission interval for aggregation proof: {}.", submission_interval);
+        info!("Submission interval for aggregation proof: {}.", submission_interval);
 
         // If the highest proven contiguous block number is greater than the latest proposed block
         // number plus the submission interval, create an aggregation proof.

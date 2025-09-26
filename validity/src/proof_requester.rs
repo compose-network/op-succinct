@@ -193,7 +193,7 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         let proof_id = match self
             .network_prover
             .prove(&self.program_config.agg_pk, &stdin)
-            .mode(self.agg_mode)
+            .compressed()
             .strategy(self.agg_strategy)
             // TODO: implement feature flag.
             .timeout(Duration::from_secs(self.timeout))

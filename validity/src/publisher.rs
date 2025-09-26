@@ -27,8 +27,8 @@ pub fn build_aggregation_outputs(
     l2_post_root: B256,
     l2_block_number: u64,
     rollup_config_hash: B256,
-    mailboxRoot: B256,
-    mailboxInfo: MailboxInfoStruct,
+    mailbox_root: B256,
+    mailbox_info: MailboxInfoStruct,
     multi_block_vkey: B256,
     prover_address: Address,
 ) -> AggregationOutputs {
@@ -38,8 +38,8 @@ pub fn build_aggregation_outputs(
         l2PostRoot: l2_post_root,
         l2BlockNumber: l2_block_number,
         rollupConfigHash: rollup_config_hash,
-        mailboxRoot: mailboxRoot,
-        mailboxInfo: mailboxInfo,
+        mailboxRoot: mailbox_root,
+        mailboxInfo: mailbox_info,
         multiBlockVKey: multi_block_vkey,
         proverAddress: prover_address,
     }

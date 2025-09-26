@@ -1,6 +1,6 @@
 use alloy_primitives::{Address, B256};
 use alloy_provider::Provider;
-use anyhow::{Context, Result};
+use anyhow::{anyhow,Context, Result};
 use op_succinct_client_utils::boot::BootInfoStruct;
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_host_utils::{
@@ -511,7 +511,14 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
             RequestType::Aggregation => {
                 if self.mock {
                     let proof = self.generate_mock_agg_proof(&request, stdin).await?;
-                    self.db_client.update_proof_to_complete(request.id, &proof.bytes()).await?;
+
+                    let proof_bytes = match proof.proof {
+                        SP1Proof::Compressed(_) => bincode::serialize(&proof).unwrap(),
+                        SP1Proof::Groth16(_) | SP1Proof::Plonk(_) => proof.bytes(),
+                        SP1Proof::Core(_) => return Err(anyhow!("Core proofs are not supported.")),
+                    };
+
+                    self.db_client.update_proof_to_complete(request.id, &proof_bytes).await?;
                 } else {
                     let proof_id = self.request_agg_proof(stdin).await?;
                     self.db_client.update_request_to_prove(request.id, proof_id).await?;

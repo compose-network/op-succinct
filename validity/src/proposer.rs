@@ -1,12 +1,12 @@
 use std::{collections::HashMap, env, str::FromStr, sync::Arc, time::Duration};
 
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{hex, Address, B256, U256};
 use alloy_provider::{network::ReceiptResponse, Provider};
 use anyhow::{anyhow, Context, Result};
 use futures_util::{stream, StreamExt, TryStreamExt};
 use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
-use op_succinct_client_utils::boot::MailboxInfoStruct;
+use op_succinct_client_utils::boot::{MailboxInfoStruct, BootInfoStruct};
 
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_host_utils::{
@@ -953,22 +953,26 @@ where
                     .expect("agg proof must have checkpointed l1 block hash"),
             );
 
-            // TODO: remove mocks
-            let mailbox_root = B256::ZERO;
-            let mailbox_info = MailboxInfoStruct {
-                inbox_chains: vec![],
-                outbox_chains: vec![],
-                inbox_roots: vec![],
-                outbox_roots: vec![],
-            };
+
+            let mut proof_with_pv: SP1ProofWithPublicValues = bincode::deserialize(completed_agg_proof.proof.as_ref().expect("Missing proof bytes")).expect("Deserialization failure for aggr proof");
+            let boot_info: BootInfoStruct = proof_with_pv.public_values.read();
+
+            println!("Submitting mailbox infos to shared publisher:");
+            println!("boot_info.mailboxRoot: 0x{}", hex::encode(boot_info.mailboxRoot));
+            println!("boot_info.mailboxInfo:");
+            println!("  inbox_chains: [{}]", boot_info.mailboxInfo.inbox_chains.iter().map(|x| format!("0x{}", hex::encode(x))).collect::<Vec<_>>().join(", "));
+            println!("  outbox_chains: [{}]", boot_info.mailboxInfo.outbox_chains.iter().map(|x| format!("0x{}", hex::encode(x))).collect::<Vec<_>>().join(", "));
+            println!("  inbox_roots: [{}]", boot_info.mailboxInfo.inbox_roots.iter().map(|x| format!("0x{}", hex::encode(x))).collect::<Vec<_>>().join(", "));
+            println!("  outbox_roots: [{}]", boot_info.mailboxInfo.outbox_roots.iter().map(|x| format!("0x{}", hex::encode(x))).collect::<Vec<_>>().join(", "));
+
             let agg_outputs = build_aggregation_outputs(
                 l1_head,
                 pre_output.output_root.0.into(),
                 post_root_b256,
                 end_block,
                 self.program_config.commitments.rollup_config_hash,
-                mailbox_root,
-                mailbox_info,
+                boot_info.mailboxRoot,
+                boot_info.mailboxInfo,
                 self.program_config.commitments.range_vkey_commitment,
                 self.requester_config.prover_address,
             );

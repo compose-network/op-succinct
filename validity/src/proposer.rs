@@ -924,7 +924,6 @@ where
     /// with the proof. Otherwise, propose the L2 output.
     /// SSV: we do not submit on-chain; only to the Shared Publisher!!!
     ///
-    #[tracing::instrument(name = "proposer.relay_aggregation_proof", skip(self))]
     async fn relay_aggregation_proof(
         &self,
         completed_agg_proof: &OPSuccinctRequest,
@@ -954,12 +953,10 @@ where
                     .expect("agg proof must have checkpointed l1 block hash"),
             );
 
-            println!("Deserializing aggregation proof to boot_info ");
-
             let proof = completed_agg_proof.proof.as_ref()
                 .expect("No proof available for deserialization");
 
-            println!("Proof length: {}", proof.len());
+            println!("Relay completed aggregation proof: length={}", proof.len());
 
             let mut proof_with_pv: SP1ProofWithPublicValues = bincode::deserialize(proof)
                 .expect("Deserialization failure for aggr proof");

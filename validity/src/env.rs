@@ -94,12 +94,12 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
     let agg_proof_strategy = FulfillmentStrategy::Auction;
 
     // Parse proof mode
-    let agg_proof_mode =
-        if get_env_var("AGG_PROOF_MODE", Some("groth16".to_string()))?.to_lowercase() == "plonk" {
-            SP1ProofMode::Plonk
-        } else {
-            SP1ProofMode::Groth16
-        };
+    let agg_proof_mode = SP1ProofMode::Compressed;
+        // if get_env_var("AGG_PROOF_MODE", Some("groth16".to_string()))?.to_lowercase() == "plonk" {
+        //     SP1ProofMode::Plonk
+        // } else {
+        //     SP1ProofMode::Groth16
+        // };
 
     // Optional loop interval
     let loop_interval = get_env_var("LOOP_INTERVAL", Some(DEFAULT_LOOP_INTERVAL))?;

@@ -170,11 +170,6 @@ deploy-oracle env_file=".env" *features='':
     # cd into contracts directory
     cd contracts
 
-    VERIFY=""
-    if [ "$ETHERSCAN_API_KEY" != "" ]; then
-      VERIFY="--verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY"
-    fi
-    
     ENV_VARS=""
     if [ -n "${ADMIN_PK:-}" ]; then ENV_VARS="$ENV_VARS ADMIN_PK=$ADMIN_PK"; fi
     if [ -n "${DEPLOY_PK:-}" ]; then ENV_VARS="$ENV_VARS DEPLOY_PK=$DEPLOY_PK"; fi
@@ -183,8 +178,7 @@ deploy-oracle env_file=".env" *features='':
     $ENV_VARS forge script script/validity/OPSuccinctDeployer.s.sol:OPSuccinctDeployer \
         --rpc-url $L1_RPC \
         --private-key $PRIVATE_KEY \
-        --broadcast \
-        $VERIFY
+        --broadcast
 
 # Upgrade the OPSuccinct L2 Output Oracle
 upgrade-oracle env_file=".env" *features='':
@@ -328,3 +322,72 @@ remove-config config_name env_file=".env":
         --rpc-url $L1_RPC \
         --private-key $PRIVATE_KEY \
         --broadcast
+
+
+# Set OPSuccinctDisputeGame implementation on existing DisputeGameFactory
+set-dispute-game-impl env_file=".env":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Load environment variables
+    source {{env_file}}
+
+    # Check if required environment variables are set.
+    if [ -z "${DGF_ADDRESS:-}" ]; then
+        echo "Error: DGF_ADDRESS environment variable is not set"
+        exit 1
+    fi
+    if [ -z "${L2OO_ADDRESS:-}" ]; then
+        echo "Error: L2OO_ADDRESS environment variable is not set"
+        exit 1
+    fi
+
+    # cd into contracts directory
+    cd contracts
+
+    # forge install
+    forge install
+
+    # Run the forge script
+    env DGF_ADDRESS=$DGF_ADDRESS \
+        L2OO_ADDRESS=$L2OO_ADDRESS \
+        forge script script/validity/SetOPSuccinctDisputeGameImpl.s.sol:SetOPSuccinctDisputeGameImpl \
+        --rpc-url $L1_RPC \
+        --private-key $PRIVATE_KEY \
+        --broadcast \
+        --legacy
+
+
+
+# Set DisputeGameFactory on target contract
+set-dispute-game-factory env_file=".env":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Load environment variables
+    source {{env_file}}
+
+    # Check if required environment variables are set.
+    if [ -z "${L2OO_ADDRESS:-}" ]; then
+        echo "Error: L2OO_ADDRESS environment variable is not set"
+        exit 1
+    fi
+    if [ -z "${DGF_ADDRESS:-}" ]; then
+        echo "Error: DGF_ADDRESS environment variable is not set"
+        exit 1
+    fi
+
+    # cd into contracts directory
+    cd contracts
+
+    # forge install
+    forge install
+
+    # Run the forge script
+    env L2OO_ADDRESS=$L2OO_ADDRESS \
+        DGF_ADDRESS=$DGF_ADDRESS \
+        forge script script/validity/SetDisputeGameFactory.s.sol:SetDisputeGameFactory \
+        --rpc-url $L1_RPC \
+        --private-key $PRIVATE_KEY \
+        --broadcast \
+        --legacy

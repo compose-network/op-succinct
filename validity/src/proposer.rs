@@ -953,7 +953,7 @@ where
             );
 
 
-            let mut proof_with_pv: SP1ProofWithPublicValues = bincode::deserialize(completed_agg_proof.proof.as_ref().expect("Missing proof bytes")).expect("Deserialization failure for aggr proof");
+            let mut proof_with_pv: SP1ProofWithPublicValues = bincode::deserialize(completed_agg_proof.proof.as_ref().unwrap()).expect("Deserialization failure for aggr proof");
             let boot_info: BootInfoStruct = proof_with_pv.public_values.read();
 
             println!("Submitting mailbox infos to shared publisher:");

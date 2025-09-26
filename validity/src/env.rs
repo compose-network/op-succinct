@@ -104,6 +104,15 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
     // Optional loop interval
     let loop_interval = get_env_var("LOOP_INTERVAL", Some(DEFAULT_LOOP_INTERVAL))?;
 
+    let mut mock = false;
+    let l2_rpc: String = get_env_var("L2_RPC", None)?;
+
+    if l2_rpc == "http://optimism-stack-2-geth:8545" {
+        mock = true;
+    }
+
+    println!("Mock mode {}", mock);
+
     let config = EnvironmentConfig {
         metrics_port: get_env_var("METRICS_PORT", Some(8080))?,
         l1_rpc: get_env_var("L1_RPC", None)?,
@@ -115,11 +124,16 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         agg_proof_mode,
         l2oo_address: get_env_var("L2OO_ADDRESS", Some(Address::ZERO))?,
         dgf_address: get_env_var("DGF_ADDRESS", Some(Address::ZERO))?,
-        range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?,
+
+        // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert
+        range_proof_interval: 600,
+        submission_interval: 600,
+        mock: mock,
+
         max_concurrent_witness_gen: get_env_var("MAX_CONCURRENT_WITNESS_GEN", Some(1))?,
         max_concurrent_proof_requests: get_env_var("MAX_CONCURRENT_PROOF_REQUESTS", Some(1))?,
-        submission_interval: get_env_var("SUBMISSION_INTERVAL", Some(1800))?,
-        mock: get_env_var("OP_SUCCINCT_MOCK", Some(false))?,
+        // submission_interval: get_env_var("SUBMISSION_INTERVAL", Some(1800))?, // TODO: revert
+        // mock: get_env_var("OP_SUCCINCT_MOCK", Some(false))?, // TODO: revert
         loop_interval,
         safe_db_fallback: get_env_var("SAFE_DB_FALLBACK", Some(false))?,
         op_succinct_config_name: get_env_var(

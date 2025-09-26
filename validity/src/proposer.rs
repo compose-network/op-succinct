@@ -203,11 +203,11 @@ where
             .await?
         {
             Some(block_number) => {
-                tracing::debug!("Found finalized block number: {}", block_number);
+                info!("Found finalized block number: {}", block_number);
                 block_number
             }
             None => {
-                tracing::debug!("No new finalized block number found since last proposed block. No new range proof requests will be added.");
+                info!("No new finalized block number found since last proposed block. No new range proof requests will be added.");
                 return Ok(());
             }
         };
@@ -520,13 +520,12 @@ where
         };
 
         // Get the submission interval from the contract.
-        let contract_submission_interval: u64 =
-            self.contract_config.l2oo_contract.submissionInterval().call().await?.to::<u64>();
+        // let contract_submission_interval: u64 =
+        //     self.contract_config.l2oo_contract.submissionInterval().call().await?.to::<u64>();
 
         // Use the submission interval from the contract if it's greater than the one in the
         // proposer config.
-        let submission_interval =
-            contract_submission_interval.max(self.requester_config.submission_interval) as i64;
+        let submission_interval = (self.requester_config.submission_interval) as i64;
 
         info!("Submission interval for aggregation proof: {}.", submission_interval);
 
@@ -660,14 +659,14 @@ where
         if witness_gen_count + execution_count + prove_count >=
             self.requester_config.max_concurrent_proof_requests as i64
         {
-            debug!("There are already MAX_CONCURRENT_PROOF_REQUESTS proofs in WitnessGeneration, Execute, and Prove status.");
+            info!("There are already MAX_CONCURRENT_PROOF_REQUESTS proofs in WitnessGeneration, Execute, and Prove status.");
             return Ok(());
         }
 
         // If there are already MAX_CONCURRENT_WITNESS_GEN proofs in WitnessGeneration status,
         // return.
         if witness_gen_count >= self.requester_config.max_concurrent_witness_gen as i64 {
-            debug!(
+            info!(
                 "There are already MAX_CONCURRENT_WITNESS_GEN proofs in WitnessGeneration status."
             );
             return Ok(());

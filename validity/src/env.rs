@@ -128,7 +128,7 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert
         range_proof_interval: 600,
         submission_interval: 600,
-        mock: mock,
+        mock: true, // TODO: WIP
 
         max_concurrent_witness_gen: get_env_var("MAX_CONCURRENT_WITNESS_GEN", Some(1))?,
         max_concurrent_proof_requests: get_env_var("MAX_CONCURRENT_PROOF_REQUESTS", Some(1))?,

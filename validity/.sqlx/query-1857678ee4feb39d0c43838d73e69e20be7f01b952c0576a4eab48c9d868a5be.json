@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                mailbox_inbox_chains,\n                mailbox_outbox_chains,\n                mailbox_inbox_roots,\n                mailbox_outbox_roots,\n                mailbox_root\n            FROM requests \n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mailbox_inbox_chains",
+        "type_info": "ByteaArray"
+      },
+      {
+        "ordinal": 1,
+        "name": "mailbox_outbox_chains",
+        "type_info": "ByteaArray"
+      },
+      {
+        "ordinal": 2,
+        "name": "mailbox_inbox_roots",
+        "type_info": "ByteaArray"
+      },
+      {
+        "ordinal": 3,
+        "name": "mailbox_outbox_roots",
+        "type_info": "ByteaArray"
+      },
+      {
+        "ordinal": 4,
+        "name": "mailbox_root",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "1857678ee4feb39d0c43838d73e69e20be7f01b952c0576a4eab48c9d868a5be"
+}

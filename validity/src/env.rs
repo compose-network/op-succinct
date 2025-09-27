@@ -111,6 +111,9 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         mock = true;
     }
 
+
+    let l2oo_address = Address::from("0x1Be0d1CbAb6929BA40F905b737002D6F93a76168");
+
     println!("Mock mode {}", mock);
 
     let config = EnvironmentConfig {
@@ -122,7 +125,8 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         range_proof_strategy,
         agg_proof_strategy,
         agg_proof_mode,
-        l2oo_address: get_env_var("L2OO_ADDRESS", Some(Address::ZERO))?,
+        // l2oo_address: get_env_var("L2OO_ADDRESS", Some(Address::ZERO))?,
+        l2oo_address: l2oo_address,
         dgf_address: get_env_var("DGF_ADDRESS", Some(Address::ZERO))?,
 
         // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert

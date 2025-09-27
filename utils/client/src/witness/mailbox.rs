@@ -1,5 +1,4 @@
-use alloy_primitives::map::HashMap;
-use kona_preimage::PreimageKey;
+use alloy_primitives::{keccak256, B256};
 use kzg_rs::Bytes32;
 use serde::{Deserialize, Serialize};
 
@@ -63,5 +62,52 @@ impl MailboxStore {
             .map(|bytes| bytes.0)
             .collect()
     }
+}
+
+/// Compute the mailbox root from mailbox store data.
+pub fn compute_mailbox_root(mailbox_store: MailboxStore) -> B256 {
+    let mut bytes = Vec::new();
+
+    let mut chain_ids: Vec<u64> = mailbox_store.decode_inbox_chains();
+    chain_ids.extend(mailbox_store.decode_outbox_chains());
+    chain_ids.sort_unstable();
+    chain_ids.dedup();
+
+    bytes.extend_from_slice(b"MAILBOX");
+
+    bytes.extend_from_slice(&(chain_ids.len() as u64).to_be_bytes());
+
+    for chain_id in chain_ids {
+        // Write the chain ID first
+        bytes.extend_from_slice(&chain_id.to_be_bytes());
+
+        let inbox_index = mailbox_store
+            .decode_inbox_chains()
+            .iter()
+            .position(|&inbox_chain_id| chain_id == inbox_chain_id);
+
+        if let Some(index) = inbox_index {
+            let inbox_root = mailbox_store.decode_inbox_roots()[index];
+            bytes.extend_from_slice(&inbox_root);
+        } else {
+            // Write 32 zero bytes for missing inbox root
+            bytes.extend_from_slice(&[0u8; 32]);
+        }
+
+        let outbox_index = mailbox_store
+            .decode_outbox_chains()
+            .iter()
+            .position(|&outbox_chain_id| chain_id == outbox_chain_id);
+
+        if let Some(index) = outbox_index {
+            let outbox_root = mailbox_store.decode_outbox_roots()[index];
+            bytes.extend_from_slice(&outbox_root);
+        } else {
+            // Write 32 zero bytes for missing outbox root
+            bytes.extend_from_slice(&[0u8; 32]);
+        }
+    }
+
+    B256::from(keccak256(&bytes))
 }
 

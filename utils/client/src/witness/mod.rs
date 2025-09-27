@@ -2,20 +2,20 @@ pub mod executor;
 pub mod preimage_store;
 mod mailbox;
 
-pub use mailbox::MailboxStore;
+pub use mailbox::{MailboxStore, compute_mailbox_root};
 
 use std::{fmt::Debug, sync::Arc};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use kzg_rs::{Blob, Bytes48, Bytes32};
+use kzg_rs::{Blob, Bytes48};
 use preimage_store::PreimageStore;
 use serde::{Deserialize, Serialize};
 
 use crate::BlobStore;
 
 #[async_trait]
-pub trait WitnessData: Sized {
+pub trait WitnessData: Sized + Send {
     /// Creates a new WitnessData from the given preimage store, blob data, and storage data.
     fn from_parts(
         preimage_store: PreimageStore, 
@@ -46,6 +46,7 @@ pub trait WitnessData: Sized {
 
         Ok((oracle, beacon, mailbox_store))
     }
+    fn get_mailbox_store(&self) -> &MailboxStore;
 }
 
 #[derive(Clone, Debug, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -75,6 +76,10 @@ impl WitnessData for DefaultWitnessData {
             self.blob_data,
             self.mailbox_store
         )
+    }
+
+    fn get_mailbox_store(&self) -> &MailboxStore {
+        &self.mailbox_store
     }
 }
 

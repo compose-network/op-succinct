@@ -17,14 +17,13 @@ use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher, get_agg_proof_stdin, host::OPSuccinctHost,
     metrics::MetricsGauge, witness_generation::WitnessGenerator,
 };
-use op_succinct_proof_utils::{get_range_elf_embedded, GuestLogBridge};
+use op_succinct_proof_utils::get_range_elf_embedded;
 use op_succinct_signer_utils::Signer;
 use sp1_sdk::{
     network::FulfillmentStrategy, NetworkProver, NetworkSigner, Prover, ProverClient, SP1ProofMode,
     SP1ProofWithPublicValues, SP1ProvingKey, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
 use tokio::{sync::Mutex, time};
-use tracing::Level;
 
 use crate::{
     config::ProposerConfig,

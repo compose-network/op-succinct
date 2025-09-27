@@ -108,9 +108,13 @@ impl DriverDBClient {
                 l2_chain_id,
                 contract_address,
                 prover_address,
-                l1_head_block_number
+                l1_head_block_number,
+                mailbox_inbox_chains,
+                mailbox_outbox_chains,
+                mailbox_inbox_roots,
+                mailbox_outbox_roots
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33
             )
             "#,
             req.status as i16,
@@ -143,6 +147,10 @@ impl DriverDBClient {
             req.contract_address.as_ref().map(|arr| &arr[..]),
             req.prover_address.as_ref().map(|arr| &arr[..]),
             req.l1_head_block_number.map(|n| n as i64),
+            req.mailbox_inbox_chains.as_ref().map(|v| v.as_slice()),
+            req.mailbox_outbox_chains.as_ref().map(|v| v.as_slice()),
+            req.mailbox_inbox_roots.as_ref().map(|v| v.as_slice()),
+            req.mailbox_outbox_roots.as_ref().map(|v| v.as_slice()),
         )
         .execute(&self.pool)
         .await
@@ -693,7 +701,8 @@ impl DriverDBClient {
                     execution_duration, prove_duration, range_vkey_commitment,
                     aggregation_vkey_hash, rollup_config_hash, relay_tx_hash, proof, 
                     total_nb_transactions, total_eth_gas_used, total_l1_fees, total_tx_fees, 
-                    l1_chain_id, l2_chain_id, contract_address, prover_address, l1_head_block_number) ",
+                    l1_chain_id, l2_chain_id, contract_address, prover_address, l1_head_block_number,
+                    mailbox_inbox_chains, mailbox_outbox_chains, mailbox_inbox_roots, mailbox_outbox_roots) ",
             );
 
             query_builder.push_values(chunk, |mut b, req| {
@@ -725,7 +734,11 @@ impl DriverDBClient {
                     .push_bind(req.l2_chain_id)
                     .push_bind(req.contract_address.as_ref().map(|arr| &arr[..]))
                     .push_bind(req.prover_address.as_ref().map(|arr| &arr[..]))
-                    .push_bind(req.l1_head_block_number);
+                    .push_bind(req.l1_head_block_number)
+                    .push_bind(req.mailbox_inbox_chains.as_ref().map(|v| v.as_slice()))
+                    .push_bind(req.mailbox_outbox_chains.as_ref().map(|v| v.as_slice()))
+                    .push_bind(req.mailbox_inbox_roots.as_ref().map(|v| v.as_slice()))
+                    .push_bind(req.mailbox_outbox_roots.as_ref().map(|v| v.as_slice()));
             });
 
             query_builder.build().execute(&mut *tx).await?;
@@ -736,5 +749,67 @@ impl DriverDBClient {
 
         // Create a result with the total rows affected
         Ok(PgQueryResult::default())
+    }
+
+    /// Update the mailbox store fields for a request.
+    pub async fn update_mailbox_store(
+        &self,
+        id: i64,
+        inbox_chains: Option<Vec<Vec<u8>>>,
+        outbox_chains: Option<Vec<Vec<u8>>>,
+        inbox_roots: Option<Vec<Vec<u8>>>,
+        outbox_roots: Option<Vec<Vec<u8>>>,
+        mailbox_root: Option<Vec<u8>>,
+    ) -> Result<PgQueryResult, Error> {
+        sqlx::query!(
+            r#"
+            UPDATE requests SET 
+                mailbox_inbox_chains = $1,
+                mailbox_outbox_chains = $2,
+                mailbox_inbox_roots = $3,
+                mailbox_outbox_roots = $4,
+                mailbox_root = $5,
+                updated_at = NOW() 
+            WHERE id = $6
+            "#,
+            inbox_chains.as_ref().map(|v| v.as_slice()),
+            outbox_chains.as_ref().map(|v| v.as_slice()),
+            inbox_roots.as_ref().map(|v| v.as_slice()),
+            outbox_roots.as_ref().map(|v| v.as_slice()),
+            mailbox_root.as_ref().map(|v| v.as_slice()),
+            id,
+        )
+        .execute(&self.pool)
+        .await
+    }
+
+    /// Fetch mailbox store data for a specific request.
+    pub async fn fetch_mailbox_store(
+        &self,
+        id: i64,
+    ) -> Result<Option<(Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>, Option<Vec<u8>>)>, Error> {
+        let result = sqlx::query!(
+            r#"
+            SELECT 
+                mailbox_inbox_chains,
+                mailbox_outbox_chains,
+                mailbox_inbox_roots,
+                mailbox_outbox_roots,
+                mailbox_root
+            FROM requests 
+            WHERE id = $1
+            "#,
+            id,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result.map(|row| (
+            row.mailbox_inbox_chains,
+            row.mailbox_outbox_chains,
+            row.mailbox_inbox_roots,
+            row.mailbox_outbox_roots,
+            row.mailbox_root,
+        )))
     }
 }

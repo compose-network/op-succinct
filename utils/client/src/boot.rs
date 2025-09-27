@@ -4,7 +4,6 @@
 use alloy_primitives::B256;
 use alloy_sol_types::sol;
 use kona_genesis::RollupConfig;
-use kona_proof::BootInfo;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -45,11 +44,11 @@ sol! {
         uint64 l2BlockNumber;
         bytes32 rollupConfigHash;
         bytes32 mailboxRoot;
-        MailboxInfoStruct mailboxInfo;
+        // MailboxInfoStruct mailboxInfo;
     }
 }
 
-// TODO: is this unused ?
+// TODO: is this used ?
 // impl From<BootInfo> for BootInfoStruct {
 //     fn from(boot_info: BootInfo) -> Self {
 //         BootInfoStruct {

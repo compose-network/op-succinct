@@ -107,6 +107,11 @@ pub struct OPSuccinctRequest {
     pub contract_address: Option<Vec<u8>>, //Address
     pub prover_address: Option<Vec<u8>>,   //Address
     pub l1_head_block_number: Option<i64>, // L1 head block number used for request
+    pub mailbox_inbox_chains: Option<Vec<Vec<u8>>>,  // Mailbox inbox chain IDs as Bytes32
+    pub mailbox_outbox_chains: Option<Vec<Vec<u8>>>, // Mailbox outbox chain IDs as Bytes32
+    pub mailbox_inbox_roots: Option<Vec<Vec<u8>>>,   // Mailbox inbox roots as Bytes32
+    pub mailbox_outbox_roots: Option<Vec<Vec<u8>>>,  // Mailbox outbox roots as Bytes32
+    pub mailbox_root: Option<Vec<u8>>,               // Computed mailbox root as B256
 }
 
 impl OPSuccinctRequest {

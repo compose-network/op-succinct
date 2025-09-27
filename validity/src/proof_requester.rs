@@ -7,15 +7,15 @@ use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher, get_agg_proof_stdin, host::OPSuccinctHost,
     metrics::MetricsGauge, witness_generation::WitnessGenerator,
 };
-use op_succinct_proof_utils::{get_range_elf_embedded, GuestLogBridge};
+use op_succinct_proof_utils::{get_range_elf_embedded};
+use op_succinct_client_utils::witness::compute_mailbox_root;
 use sp1_sdk::{
     network::{proto::types::ExecutionStatus, FulfillmentStrategy},
     NetworkProver, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin, SP1_CIRCUIT_VERSION,
 };
 use std::{sync::Arc, time::Instant, time::Duration};
-use tracing::{info, warn, Level};
-
-
+use tracing::{info, warn};
+use op_succinct_client_utils::witness::WitnessData;
 use crate::{
     db::DriverDBClient, OPSuccinctRequest, ProgramConfig, RequestExecutionStatistics,
     RequestStatus, RequestType, ValidityGauge,
@@ -100,6 +100,50 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         }
 
         let witness = self.host.run(&host_args).await?;
+
+        let mailbox_store = witness.get_mailbox_store().clone();
+
+        println!("Mailbox store extracted:");
+        println!("  Inbox chains: {:?}", mailbox_store.decode_inbox_chains());
+        println!("  Outbox chains: {:?}", mailbox_store.decode_outbox_chains());
+        println!("  Inbox roots count: {}", mailbox_store.inbox_roots.len());
+        println!("  Outbox roots count: {}", mailbox_store.outbox_roots.len());
+
+        // Convert MailboxStore to database format
+        let inbox_chains: Option<Vec<Vec<u8>>> = if mailbox_store.inbox_chains.is_empty() {
+            None
+        } else {
+            Some(mailbox_store.inbox_chains.iter().map(|b| b.0.to_vec()).collect())
+        };
+
+        let outbox_chains: Option<Vec<Vec<u8>>> = if mailbox_store.outbox_chains.is_empty() {
+            None
+        } else {
+            Some(mailbox_store.outbox_chains.iter().map(|b| b.0.to_vec()).collect())
+        };
+
+        let inbox_roots: Option<Vec<Vec<u8>>> = if mailbox_store.inbox_roots.is_empty() {
+            None
+        } else {
+            Some(mailbox_store.inbox_roots.iter().map(|b| b.0.to_vec()).collect())
+        };
+
+        let outbox_roots: Option<Vec<Vec<u8>>> = if mailbox_store.outbox_roots.is_empty() {
+            None
+        } else {
+            Some(mailbox_store.outbox_roots.iter().map(|b| b.0.to_vec()).collect())
+        };
+
+        // Compute mailbox root from mailbox store
+        let mailbox_root = compute_mailbox_root(mailbox_store.clone());
+        let mailbox_root_bytes = Some(mailbox_root.to_vec());
+
+        self.db_client
+            .update_mailbox_store(request.id, inbox_chains, outbox_chains, inbox_roots, outbox_roots, mailbox_root_bytes)
+            .await?;
+
+        println!("Mailbox store data saved to database for request {}", request.id);
+
         let sp1_stdin = self.host.witness_generator().get_sp1_stdin(witness).unwrap();
 
         Ok(sp1_stdin)

@@ -1,5 +1,5 @@
 use alloy_consensus::BlockBody;
-use alloy_primitives::{address, Address, B256, U256};
+use alloy_primitives::B256;
 use alloy_rlp::Decodable;
 use anyhow::Result;
 use kona_derive::{
@@ -10,21 +10,11 @@ use kona_derive::{
 use kona_driver::{Driver, DriverError, DriverPipeline, DriverResult, Executor, TipCursor};
 use kona_genesis::RollupConfig;
 use kona_preimage::{CommsClient, PreimageKey};
-use kona_proof::{errors::OracleProviderError, FlushableCache, HintType};
+use kona_proof::{errors::OracleProviderError, HintType};
 use kona_protocol::L2BlockInfo;
 use op_alloy_consensus::{OpBlock, OpTxEnvelope, OpTxType};
 use std::fmt::Debug;
-use kona_mpt::TrieHinter;
-use kona_mpt::{TrieNode, Nibbles, TrieNodeError};
-use alloy_trie::TrieAccount;
-use alloy_primitives::{b256, keccak256};
-use kona_proof::{executor::KonaExecutor, l2::OracleL2ChainProvider};
 
-type MyKonaExecutor<'a, O> = KonaExecutor<'a, OracleL2ChainProvider<O>, OracleL2ChainProvider<O>, crate::precompiles::ZkvmOpEvmFactory>;
-use revm::primitives::StorageKey;
-use revm::context::JournalTr;
-use revm::{Journal, JournalEntry};
-use revm::interpreter::Host;
 use tracing::{error, info, warn};
 
 /// Fetches the safe head hash of the L2 chain based on the agreed upon L2 output root in the

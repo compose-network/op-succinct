@@ -34,28 +34,6 @@ fn add_to_bytes(data: &[u8], value: u64) -> [u8; 32] {
     result.to_be_bytes()
 }
 
-/// Calculates storage key for list element at slot i
-fn get_list_storage_key(slot: u64, index: u64) -> [u8; 32] {
-    if index == 0 {
-        // For index 0, return the keccak hash of the slot directly
-        let slot_bytes = U256::from(slot).to_be_bytes::<32>();
-        keccak256(slot_bytes).into()
-    } else {
-        // For other indices, add the index to the base hash
-        let slot_bytes = U256::from(slot).to_be_bytes::<32>();
-        let base = keccak256(slot_bytes);
-        add_to_bytes(base.as_slice(), index)
-    }
-}
-
-/// Calculates storage key for map value with key at slot
-fn get_map_storage_key(slot: u64, key: u64) -> [u8; 32] {
-    let mut data = Vec::new();
-    data.extend_from_slice(&U256::from(key).to_be_bytes::<32>());
-    data.extend_from_slice(&U256::from(slot).to_be_bytes::<32>());
-    keccak256(data).into()
-}
-
 /// Extracts storage data using eth_getProof RPC calls to external endpoint
 async fn extract_contract_storage_data(
     contract_addr: Address,

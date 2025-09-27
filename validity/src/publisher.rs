@@ -1,11 +1,11 @@
-use alloy_primitives::{Address, FixedBytes, B256};
-use anyhow::{Context, Result};
+use alloy_primitives::{Address, B256};
+use anyhow::{Result};
 use op_succinct_client_utils::types::AggregationOutputs;
 use op_succinct_client_utils::boot::MailboxInfoStruct;
 use reqwest::Url;
 use serde::Serialize;
 use sp1_sdk::SP1VerifyingKey;
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 #[derive(Serialize)]
 struct SubmitReq {
@@ -19,6 +19,7 @@ struct SubmitReq {
     agg_vk: SP1VerifyingKey,
     #[serde(skip_serializing_if = "Option::is_none")]
     proof: Option<Vec<u8>>,
+    mailbox_info: MailboxInfoStruct,
 }
 
 pub fn build_aggregation_outputs(
@@ -28,7 +29,7 @@ pub fn build_aggregation_outputs(
     l2_block_number: u64,
     rollup_config_hash: B256,
     mailbox_root: B256,
-    mailbox_info: MailboxInfoStruct,
+    // mailbox_info: MailboxInfoStruct,
     multi_block_vkey: B256,
     prover_address: Address,
 ) -> AggregationOutputs {
@@ -39,7 +40,7 @@ pub fn build_aggregation_outputs(
         l2BlockNumber: l2_block_number,
         rollupConfigHash: rollup_config_hash,
         mailboxRoot: mailbox_root,
-        mailboxInfo: mailbox_info,
+        // mailboxInfo: mailbox_info,
         multiBlockVKey: multi_block_vkey,
         proverAddress: prover_address,
     }
@@ -57,6 +58,7 @@ pub async fn submit_to_publisher(
     l2_start_block: u64,
     agg_vk: &SP1VerifyingKey,
     proof_bytes: Option<&[u8]>,
+    mailbox_info: MailboxInfoStruct,
 ) -> Result<()> {
     debug!(endpoint = %endpoint, "Creating HTTP client for publisher request");
     let client = reqwest::Client::new();
@@ -71,6 +73,7 @@ pub async fn submit_to_publisher(
         l2_start_block,
         agg_vk: agg_vk.clone(),
         proof: proof_bytes.map(|p| p.to_vec()),
+        mailbox_info: mailbox_info,
     };
 
     let resp = client.post(endpoint.clone()).json(&body).send().await.map_err(|e| {

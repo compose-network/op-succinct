@@ -81,7 +81,7 @@ pub fn main() {
         rollupConfigHash: last_boot_info.rollupConfigHash,
         // Commit to the latest mailbox root (from the last range proof's public values).
         mailboxRoot: last_boot_info.mailboxRoot,
-        mailboxInfo: last_boot_info.mailboxInfo.clone(),
+        // mailboxInfo: last_boot_info.mailboxInfo.clone(),
     };
 
     // Convert the range vkey to a B256.
@@ -94,7 +94,7 @@ pub fn main() {
         l2BlockNumber: final_boot_info.l2BlockNumber,
         rollupConfigHash: final_boot_info.rollupConfigHash,
         mailboxRoot: final_boot_info.mailboxRoot,
-        mailboxInfo: final_boot_info.mailboxInfo.clone(),
+        // mailboxInfo: final_boot_info.mailboxInfo.clone(),
         multiBlockVKey: multi_block_vkey_b256,
         proverAddress: agg_inputs.prover_address,
     };

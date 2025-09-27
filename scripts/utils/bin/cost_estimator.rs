@@ -12,7 +12,7 @@ use op_succinct_host_utils::{
     stats::ExecutionStats,
     witness_generation::WitnessGenerator,
 };
-use op_succinct_proof_utils::{get_range_elf_embedded, initialize_host, GuestLogBridge};
+use op_succinct_proof_utils::{get_range_elf_embedded, initialize_host};
 use op_succinct_scripts::HostExecutorArgs;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use sp1_sdk::{utils, ProverClient};

@@ -1,12 +1,11 @@
 use std::{collections::HashMap, env, str::FromStr, sync::Arc, time::Duration};
 
 use alloy_eips::BlockId;
-use alloy_primitives::{hex, Address, B256, U256};
-use alloy_provider::{network::ReceiptResponse, Provider};
+use alloy_primitives::{B256, U256};
+use alloy_provider::{Provider};
 use anyhow::{anyhow, Context, Result};
 use futures_util::{stream, StreamExt, TryStreamExt};
 use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
-use op_succinct_client_utils::boot::{MailboxInfoStruct, BootInfoStruct};
 
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_host_utils::{
@@ -30,6 +29,7 @@ use crate::{
     ContractConfig, OPSuccinctProofRequester, ProgramConfig, RequesterConfig, ValidityGauge,
 };
 use crate::publisher::{build_aggregation_outputs, submit_to_publisher};
+use op_succinct_client_utils::boot::MailboxInfoStruct;
 
 /// Configuration for the driver.
 pub struct DriverConfig {
@@ -958,19 +958,19 @@ where
 
             println!("Relay completed aggregation proof: length={}", proof.len());
 
-            let mut proof_with_pv: SP1ProofWithPublicValues = bincode::deserialize(proof)
-                .expect("Deserialization failure for aggr proof");
-
-            let boot_info: BootInfoStruct = proof_with_pv.public_values.read();
-
-
-            println!("Submitting mailbox infos to shared publisher:");
-            println!("boot_info.mailboxRoot: 0x{}", hex::encode(boot_info.mailboxRoot));
-            println!("boot_info.mailboxInfo:");
-            println!("  inbox_chains: [{}]", boot_info.mailboxInfo.inbox_chains.iter().map(|x| format!("0x{}", hex::encode(x))).collect::<Vec<_>>().join(", "));
-            println!("  outbox_chains: [{}]", boot_info.mailboxInfo.outbox_chains.iter().map(|x| format!("0x{}", hex::encode(x))).collect::<Vec<_>>().join(", "));
-            println!("  inbox_roots: [{}]", boot_info.mailboxInfo.inbox_roots.iter().map(|x| format!("0x{}", hex::encode(x))).collect::<Vec<_>>().join(", "));
-            println!("  outbox_roots: [{}]", boot_info.mailboxInfo.outbox_roots.iter().map(|x| format!("0x{}", hex::encode(x))).collect::<Vec<_>>().join(", "));
+            // Fetch mailbox data from database
+            let (mailbox_root, mailbox_info) = match self.fetch_mailbox_data(completed_agg_proof.id).await {
+                Ok((root, info)) => (root, info),
+                Err(e) => {
+                    tracing::warn!("Failed to fetch mailbox data for request {}: {}. Using zero values.", completed_agg_proof.id, e);
+                    (B256::ZERO, MailboxInfoStruct {
+                        inbox_chains: vec![],
+                        outbox_chains: vec![],
+                        inbox_roots: vec![],
+                        outbox_roots: vec![],
+                    })
+                }
+            };
 
             let agg_outputs = build_aggregation_outputs(
                 l1_head,
@@ -978,8 +978,7 @@ where
                 post_root_b256,
                 end_block,
                 self.program_config.commitments.rollup_config_hash,
-                boot_info.mailboxRoot,
-                boot_info.mailboxInfo,
+                mailbox_root,
                 self.program_config.commitments.range_vkey_commitment,
                 self.requester_config.prover_address,
             );
@@ -998,6 +997,7 @@ where
                 start_block,
                 &self.program_config.agg_vk,
                 completed_agg_proof.proof.as_deref(),
+                mailbox_info,
             )
             .await
             {
@@ -1444,5 +1444,94 @@ where
         }
 
         Ok(Some(current_end))
+    }
+
+    /// Fetch mailbox root and mailbox info from database.
+    async fn fetch_mailbox_data(&self, request_id: i64) -> Result<(B256, MailboxInfoStruct)> {
+        // Fetch mailbox data from database
+        let mailbox_data = self
+            .driver_config
+            .driver_db_client
+            .fetch_mailbox_store(request_id)
+            .await?;
+
+        match mailbox_data {
+            Some((inbox_chains, outbox_chains, inbox_roots, outbox_roots, mailbox_root)) => {
+                // Parse mailbox root
+                let root = match mailbox_root {
+                    Some(root_bytes) => {
+                        if root_bytes.len() == 32 {
+                            B256::from_slice(&root_bytes)
+                        } else {
+                            tracing::warn!("Invalid mailbox root length for request {}: expected 32 bytes, got {}", request_id, root_bytes.len());
+                            B256::ZERO
+                        }
+                    }
+                    None => {
+                        tracing::warn!("No mailbox root found for request {}", request_id);
+                        B256::ZERO
+                    }
+                };
+
+                // Convert database format to MailboxInfoStruct
+                let mailbox_info = MailboxInfoStruct {
+                    inbox_chains: inbox_chains
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|bytes| {
+                            if bytes.len() == 32 {
+                                B256::from_slice(&bytes)
+                            } else {
+                                B256::ZERO
+                            }
+                        })
+                        .collect(),
+                    outbox_chains: outbox_chains
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|bytes| {
+                            if bytes.len() == 32 {
+                                B256::from_slice(&bytes)
+                            } else {
+                                B256::ZERO
+                            }
+                        })
+                        .collect(),
+                    inbox_roots: inbox_roots
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|bytes| {
+                            if bytes.len() == 32 {
+                                B256::from_slice(&bytes)
+                            } else {
+                                B256::ZERO
+                            }
+                        })
+                        .collect(),
+                    outbox_roots: outbox_roots
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|bytes| {
+                            if bytes.len() == 32 {
+                                B256::from_slice(&bytes)
+                            } else {
+                                B256::ZERO
+                            }
+                        })
+                        .collect(),
+                };
+
+                Ok((root, mailbox_info))
+            }
+            None => {
+                tracing::warn!("No mailbox data found for request {}", request_id);
+                Ok((B256::ZERO, MailboxInfoStruct {
+                    inbox_chains: vec![],
+                    outbox_chains: vec![],
+                    inbox_roots: vec![],
+                    outbox_roots: vec![],
+                }))
+            }
+        }
     }
 }

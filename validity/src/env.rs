@@ -112,7 +112,9 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
     }
 
 
-    let l2oo_address = Address::from("0x1Be0d1CbAb6929BA40F905b737002D6F93a76168");
+    let l2oo_address = "0x1Be0d1CbAb6929BA40F905b737002D6F93a76168"
+        .parse::<Address>()
+        .expect("Invalid address format");
 
     println!("Mock mode {}", mock);
 

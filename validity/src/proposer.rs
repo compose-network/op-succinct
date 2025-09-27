@@ -972,6 +972,14 @@ where
                 }
             };
 
+            println!("Fetched mailbox data for request {}:", completed_agg_proof.id);
+            println!("  Mailbox root: {:?}", mailbox_root);
+            println!("  Mailbox info:");
+            println!("    Inbox chains: {:?}", mailbox_info.inbox_chains);
+            println!("    Outbox chains: {:?}", mailbox_info.outbox_chains);
+            println!("    Inbox roots: {:?}", mailbox_info.inbox_roots);
+            println!("    Outbox roots: {:?}", mailbox_info.outbox_roots);
+
             let agg_outputs = build_aggregation_outputs(
                 l1_head,
                 pre_output.output_root.0.into(),

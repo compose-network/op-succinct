@@ -112,7 +112,7 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
     }
 
 
-    let l2oo_address = "0x1Be0d1CbAb6929BA40F905b737002D6F93a76168"
+    let l2oo_address = "0x7b1a1AD51d4125AbE05c318544Cee585B26D6966"
         .parse::<Address>()
         .expect("Invalid address format");
 
@@ -132,8 +132,8 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         dgf_address: get_env_var("DGF_ADDRESS", Some(Address::ZERO))?,
 
         // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert
-        range_proof_interval: 600,
-        submission_interval: 600,
+        range_proof_interval: 150,
+        submission_interval: 150,
         mock: true, // TODO: WIP
 
         max_concurrent_witness_gen: get_env_var("MAX_CONCURRENT_WITNESS_GEN", Some(1))?,

@@ -80,6 +80,8 @@ where
             )
             .await
             .unwrap();
+
+        log_info!("Executor run pipeline");
         executor.run(boot_info, pipeline, cursor, l2_provider).await.unwrap()
         // boot_info
         }

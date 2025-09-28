@@ -1,6 +1,7 @@
 use alloy_primitives::{keccak256, B256};
 use kzg_rs::Bytes32;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 #[derive(
     Clone, Debug, Default, Serialize, Deserialize, rkyv::Serialize, rkyv::Archive, rkyv::Deserialize,
@@ -11,6 +12,14 @@ pub struct MailboxStore {
     pub inbox_roots: Vec<Bytes32>,
     pub outbox_roots: Vec<Bytes32>,
 }
+
+impl fmt::Display for MailboxStore {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "MailboxStore error: {:?}", self)
+    }
+}
+
+impl std::error::Error for MailboxStore {}
 
 impl MailboxStore {
     pub fn new(

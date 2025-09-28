@@ -46,7 +46,6 @@ pub trait WitnessData: Sized + Send {
 
         Ok((oracle, beacon, mailbox_store))
     }
-    fn get_mailbox_store(&self) -> &MailboxStore;
 }
 
 #[derive(Clone, Debug, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -76,10 +75,6 @@ impl WitnessData for DefaultWitnessData {
             self.blob_data,
             self.mailbox_store
         )
-    }
-
-    fn get_mailbox_store(&self) -> &MailboxStore {
-        &self.mailbox_store
     }
 }
 

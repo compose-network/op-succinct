@@ -293,7 +293,7 @@ pub trait WitnessGenerator {
         &self,
         preimage_chan: NativeChannel,
         hint_chan: NativeChannel,
-    ) -> Result<Self::WitnessData> {
+    ) -> Result<(Self::WitnessData, MailboxStore)> {
         let preimage_witness_store = Arc::new(Mutex::new(PreimageStore::default()));
         let blob_data = Arc::new(Mutex::new(BlobData::default()));
 
@@ -354,8 +354,8 @@ pub trait WitnessGenerator {
             blob_data.lock().unwrap().clone(),
             mailbox_store.lock().unwrap().clone(),
         );
-
-        Ok(witness)
+        let mailbox_store_value = mailbox_store.lock().unwrap().clone();
+        Ok((witness, mailbox_store_value))
     }
 
     fn get_sp1_stdin(&self, witness: Self::WitnessData) -> Result<SP1Stdin>;

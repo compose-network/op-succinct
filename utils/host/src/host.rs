@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use kona_host::single::{SingleChainHost, SingleChainHostError};
 use kona_preimage::{BidirectionalChannel, Channel};
 use tokio::task::JoinHandle;
-
+use op_succinct_client_utils::witness::MailboxStore;
 use crate::{fetcher::OPSuccinctDataFetcher, witness_generation::WitnessGenerator};
 
 #[async_trait]
@@ -68,12 +68,29 @@ pub trait OPSuccinctHost: Send + Sync + 'static {
 
         let server_task = args.start_server(hint.host, preimage.host).await?;
 
-        let witness = self.witness_generator().run(preimage.client, hint.client).await?;
+        let (witness, _) = self.witness_generator().run(preimage.client, hint.client).await?;
         // Unlike the upstream, manually abort the server task, as it will hang if you wait for both
         // tasks to complete.
         server_task.abort();
 
         Ok(witness)
+    }
+
+    async fn run_with_mailbox(
+        &self,
+        args: &Self::Args,
+    ) -> Result<(<Self::WitnessGenerator as WitnessGenerator>::WitnessData, MailboxStore)> {
+        let preimage = BidirectionalChannel::new()?;
+        let hint = BidirectionalChannel::new()?;
+
+        let server_task = args.start_server(hint.host, preimage.host).await?;
+
+        let (witness, mailbox_store) = self.witness_generator().run(preimage.client, hint.client).await?;
+        // Unlike the upstream, manually abort the server task, as it will hang if you wait for both
+        // tasks to complete.
+        server_task.abort();
+
+        Ok((witness, mailbox_store))
     }
 
     /// Get the L1 head hash from the host args.

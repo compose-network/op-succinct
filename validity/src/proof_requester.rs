@@ -2,6 +2,7 @@ use alloy_primitives::{Address, B256};
 use alloy_provider::Provider;
 use anyhow::{anyhow,Context, Result};
 use op_succinct_client_utils::boot::BootInfoStruct;
+use op_succinct_client_utils::witness::MailboxStore;
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher, get_agg_proof_stdin, host::OPSuccinctHost,
@@ -99,9 +100,7 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
                 .await?;
         }
 
-        let witness = self.host.run(&host_args).await?;
-
-        let mailbox_store = witness.get_mailbox_store().clone();
+        let (witness, mailbox_store) = self.host.run_with_mailbox(&host_args).await?;
 
         println!("Mailbox store extracted:");
         println!("  Inbox chains: {:?}", mailbox_store.decode_inbox_chains());

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                mailbox_inbox_chains,\n                mailbox_outbox_chains,\n                mailbox_inbox_roots,\n                mailbox_outbox_roots,\n                mailbox_root\n            FROM requests \n            WHERE id = $1\n            ",
+  "query": "\n            SELECT \n                mailbox_inbox_chains,\n                mailbox_outbox_chains,\n                mailbox_inbox_roots,\n                mailbox_outbox_roots,\n                mailbox_root\n            FROM requests \n            WHERE end_block = $1 AND l2_chain_id = $2 AND req_type = $3\n            ORDER BY id DESC\n            LIMIT 1\n            ",
   "describe": {
     "columns": [
       {
@@ -31,7 +31,9 @@
     ],
     "parameters": {
       "Left": [
-        "Int8"
+        "Int8",
+        "Int8",
+        "Int2"
       ]
     },
     "nullable": [
@@ -42,5 +44,5 @@
       true
     ]
   },
-  "hash": "1857678ee4feb39d0c43838d73e69e20be7f01b952c0576a4eab48c9d868a5be"
+  "hash": "b05fb9905c30151edd98e0b86c296eadf20bb971ec61da72fd5c37ae101be764"
 }

@@ -959,10 +959,10 @@ where
             println!("Relay completed aggregation proof: length={}", proof.len());
 
             // Fetch mailbox data from database
-            let (mailbox_root, mailbox_info) = match self.fetch_mailbox_data(completed_agg_proof.id).await {
+            let (mailbox_root, mailbox_info) = match self.fetch_mailbox_data(completed_agg_proof.end_block, completed_agg_proof.l2_chain_id).await {
                 Ok((root, info)) => (root, info),
                 Err(e) => {
-                    tracing::warn!("Failed to fetch mailbox data for request {}: {}. Using zero values.", completed_agg_proof.id, e);
+                    tracing::warn!("Failed to fetch mailbox data for end_block {} l2_chain_id {}: {}. Using zero values.", completed_agg_proof.end_block, completed_agg_proof.l2_chain_id, e);
                     (B256::ZERO, MailboxInfoStruct {
                         inbox_chains: vec![],
                         outbox_chains: vec![],
@@ -1455,12 +1455,12 @@ where
     }
 
     /// Fetch mailbox root and mailbox info from database.
-    async fn fetch_mailbox_data(&self, request_id: i64) -> Result<(B256, MailboxInfoStruct)> {
+    async fn fetch_mailbox_data(&self, end_block: i64, l2_chain_id: i64) -> Result<(B256, MailboxInfoStruct)> {
         // Fetch mailbox data from database
         let mailbox_data = self
             .driver_config
             .driver_db_client
-            .fetch_mailbox_store(request_id)
+            .fetch_mailbox_store(end_block, l2_chain_id, RequestType::Range)
             .await?;
 
         match mailbox_data {
@@ -1471,12 +1471,12 @@ where
                         if root_bytes.len() == 32 {
                             B256::from_slice(&root_bytes)
                         } else {
-                            tracing::warn!("Invalid mailbox root length for request {}: expected 32 bytes, got {}", request_id, root_bytes.len());
+                            tracing::warn!("Invalid mailbox root length for end_block {} l2_chain_id {}: expected 32 bytes, got {}", end_block, l2_chain_id, root_bytes.len());
                             B256::ZERO
                         }
                     }
                     None => {
-                        tracing::warn!("No mailbox root found for request {}", request_id);
+                        tracing::warn!("No mailbox root found for end_block {} l2_chain_id {}", end_block, l2_chain_id);
                         B256::ZERO
                     }
                 };
@@ -1532,7 +1532,7 @@ where
                 Ok((root, mailbox_info))
             }
             None => {
-                tracing::warn!("No mailbox data found for request {}", request_id);
+                tracing::warn!("No mailbox data found for end_block {} l2_chain_id {}", end_block, l2_chain_id);
                 Ok((B256::ZERO, MailboxInfoStruct {
                     inbox_chains: vec![],
                     outbox_chains: vec![],

@@ -2,7 +2,6 @@ use alloy_primitives::{Address, B256};
 use alloy_provider::Provider;
 use anyhow::{anyhow,Context, Result};
 use op_succinct_client_utils::boot::BootInfoStruct;
-use op_succinct_client_utils::witness::MailboxStore;
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher, get_agg_proof_stdin, host::OPSuccinctHost,
@@ -16,7 +15,6 @@ use sp1_sdk::{
 };
 use std::{sync::Arc, time::Instant, time::Duration};
 use tracing::{info, warn};
-use op_succinct_client_utils::witness::WitnessData;
 use crate::{
     db::DriverDBClient, OPSuccinctRequest, ProgramConfig, RequestExecutionStatistics,
     RequestStatus, RequestType, ValidityGauge,

@@ -783,10 +783,12 @@ impl DriverDBClient {
         .await
     }
 
-    /// Fetch mailbox store data for a specific request.
+    /// Fetch mailbox store data for a specific request by end_block, l2_chain_id, and req_type.
     pub async fn fetch_mailbox_store(
         &self,
-        id: i64,
+        end_block: i64,
+        l2_chain_id: i64,
+        req_type: RequestType,
     ) -> Result<Option<(Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>, Option<Vec<u8>>)>, Error> {
         let result = sqlx::query!(
             r#"
@@ -797,9 +799,13 @@ impl DriverDBClient {
                 mailbox_outbox_roots,
                 mailbox_root
             FROM requests 
-            WHERE id = $1
+            WHERE end_block = $1 AND l2_chain_id = $2 AND req_type = $3
+            ORDER BY id DESC
+            LIMIT 1
             "#,
-            id,
+            end_block,
+            l2_chain_id,
+            req_type as i16,
         )
         .fetch_optional(&self.pool)
         .await?;

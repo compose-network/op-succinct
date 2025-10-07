@@ -13,7 +13,7 @@ use alloy_primitives::{keccak256, Address, Bytes, B256, U256, U64};
 use alloy_provider::{Provider, ProviderBuilder, RootProvider};
 use alloy_rlp::Decodable;
 use alloy_sol_types::SolValue;
-use anyhow::{bail, Result};
+use anyhow::{bail, Result, Context};
 use futures::{stream, StreamExt};
 use kona_genesis::RollupConfig;
 use kona_host::single::SingleChainHost;
@@ -102,6 +102,36 @@ pub struct FeeData {
     pub tx_hash: B256,
     pub l1_gas_cost: U256,
     pub tx_fee: u128,
+}
+
+// Strips all occurrences of `key` from the JSON `Value`
+fn strip_key_iterative(root: &mut Value, key: &str) {
+    // We keep a stack of pointers to Values we need to visit.
+    let mut stack: Vec<*mut Value> = vec![root as *mut Value];
+
+    while let Some(ptr) = stack.pop() {
+        // SAFETY: All pointers come from the unique &mut `root` in this function call.
+        // We never store references elsewhere or use the same pointer twice concurrently,
+        // so there is no aliasing while we mutate.
+        let v = unsafe { &mut *ptr };
+
+        match v {
+            Value::Object(map) => {
+                // Remove the key at this level
+                map.remove(key);
+                // Push children to the stack
+                for child in map.values_mut() {
+                    stack.push(child as *mut Value);
+                }
+            }
+            Value::Array(arr) => {
+                for item in arr {
+                    stack.push(item as *mut Value);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 impl OPSuccinctDataFetcher {
@@ -355,7 +385,7 @@ impl OPSuccinctDataFetcher {
         T: serde::de::DeserializeOwned,
     {
         let client = reqwest::Client::new();
-        let response = client
+        let mut response = client
             .post(url.clone())
             .json(&json!({
                 "jsonrpc": "2.0",
@@ -374,7 +404,19 @@ impl OPSuccinctDataFetcher {
             return Err(anyhow::anyhow!("Error calling {method}: {error_message}"));
         }
 
-        serde_json::from_value(response["result"].clone()).map_err(Into::into)
+
+        // Take ownership of "result" (no cloning the whole response)
+        let mut result = response
+            .get_mut("result")
+            .map(|v| std::mem::take(v))
+            .ok_or_else(|| anyhow::anyhow!("Malformed JSON-RPC response: missing `result`"))?;
+
+        // Remove "minBaseFee" occurrences
+        strip_key_iterative(&mut result, "minBaseFee");
+
+        // Deserialize into the requested type
+        serde_json::from_value::<T>(result)
+            .with_context(|| format!("Failed to deserialize JSON-RPC `result` into {}", std::any::type_name::<T>()))
     }
 
     /// Fetch arbitrary data from the RPC.

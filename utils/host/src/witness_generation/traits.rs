@@ -21,6 +21,7 @@ use reqwest;
 use hex;
 use kzg_rs::Bytes32;
 use crate::witness_generation::{OnlineBlobStore, PreimageWitnessCollector};
+use tracing::{info, warn};
 
 pub type DefaultOracleBase = CachingOracle<OracleReader<NativeChannel>, HintWriter<NativeChannel>>;
 
@@ -41,8 +42,6 @@ async fn extract_contract_storage_data(
     rpc_url: &str,
 ) -> Result<(Vec<Bytes32>, Vec<Bytes32>, Vec<Bytes32>, Vec<Bytes32>)> {
     let client = reqwest::Client::new();
-
-    println!("extract_contract_storage_data for {} block number", block_number);
 
     // Get chainIDsInbox list at slot 0
     let inbox_chains_u256 = get_list_state(&client, rpc_url, contract_addr, 0, block_number).await?;
@@ -73,8 +72,6 @@ async fn get_list_state(
     slot: u64,
     block_number: u64,
 ) -> Result<Vec<U256>> {
-    println!("Getting list at slot {}", slot);
-    
     // First, get the length of the list at this slot
     let length_proof = eth_get_proof(
         client,
@@ -97,8 +94,6 @@ async fn get_list_state(
     } else {
         return Ok(Vec::new());
     };
-    
-    println!("List at slot {} has length {}", slot, length);
     
     if length == 0 {
         return Ok(Vec::new());
@@ -128,11 +123,10 @@ async fn get_list_state(
     
     let mut values = Vec::new();
     if let Some(storage_proofs) = content_proof["storageProof"].as_array() {
-        for (i, proof) in storage_proofs.iter().enumerate() {
+        for (_i, proof) in storage_proofs.iter().enumerate() {
             if let Some(value_str) = proof["value"].as_str() {
                 let value = hex_to_u256(value_str)?;
                 values.push(value);
-                println!("\tItem: {}. Value: {}", i, value);
             }
         }
     }
@@ -149,8 +143,6 @@ async fn get_map_state(
     keys: &[U256],
     block_number: u64,
 ) -> Result<Vec<B256>> {
-    println!("Getting map at slot {} with keys {:?}", slot, keys);
-    
     if keys.is_empty() {
         return Ok(Vec::new());
     }
@@ -173,11 +165,10 @@ async fn get_map_state(
     
     let mut values = Vec::new();
     if let Some(storage_proofs) = proof["storageProof"].as_array() {
-        for (i, proof) in storage_proofs.iter().enumerate() {
+        for (_i, proof) in storage_proofs.iter().enumerate() {
             if let Some(value_str) = proof["value"].as_str() {
                 let value = hex_to_b256(value_str)?;
                 values.push(value);
-                println!("\tItem: {}. Key: {}. Value: {}", i, keys[i], value);
             }
         }
     }
@@ -310,11 +301,13 @@ pub trait WitnessGenerator {
         });
         let beacon = OnlineBlobStore { provider: blob_provider.clone(), store: blob_data.clone() };
 
+        info!("Computing boot info and pipeline input");
         let (boot_info, input) = get_inputs_for_pipeline(oracle.clone()).await.unwrap();
         
         if let Some((cursor, l1_provider, l2_provider)) = input {
             let rollup_config = Arc::new(boot_info.rollup_config.clone());
 
+            info!("Running executor");
             let pipeline = self
                 .get_executor()
                 .create_pipeline(
@@ -329,25 +322,24 @@ pub trait WitnessGenerator {
                 .unwrap();
             self.get_executor().run(boot_info.clone(), pipeline, cursor, l2_provider.clone()).await.unwrap();
         }
+
         let contract_addr_str = std::env::var("MAILBOX_ADDRESS").expect("MAILBOX_ADDRESS environment variable must be set");
         let contract_addr = contract_addr_str.parse::<Address>().unwrap();
         let l2_rpc_url = std::env::var("L2_RPC").expect("L2_RPC environment variable must be set");
 
-        println!("Query mailbox info from {} contract addr, {} L2_RPC", contract_addr_str, l2_rpc_url);
+        info!("Query mailbox info from contract address: {}", contract_addr_str);
         let mailbox_store = match extract_contract_storage_data(contract_addr, boot_info.claimed_l2_block_number, &l2_rpc_url).await {
             Ok((ic, oc, ir, or)) => {
+                info!("Got MailboxStore contents for block {:?}:\n  Inbox Chains: {:?}\n  Outbox Chains: {:?}\n  Inbox Roots: {:?}\n  Outbox Roots: {:?}",
+                    boot_info.claimed_l2_block_number, ic, oc, ir, or);
                 Arc::new(Mutex::new(MailboxStore::new(ic, oc, ir, or)))
             }
             Err(e) => {
                 // Log error but continue with empty data
-                eprintln!("Failed to extract contract storage data: {:?}", e);
+                warn!("Failed to extract contract storage data: {:?}", e);
                 Arc::new(Mutex::new(MailboxStore::default()))
             }
         };
-
-        // println!("Created MailboxStore with {} inbox chains, {} outbox chains",
-        //          mailbox_store.inbox_chains.len(),
-        //          mailbox_store.outbox_chains.len());
 
         let witness = Self::WitnessData::from_parts(
             preimage_witness_store.lock().unwrap().clone(),

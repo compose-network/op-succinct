@@ -25,6 +25,7 @@ use op_succinct_client_utils::boot::BootInfoStruct;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tracing::info;
 
 use crate::L2Output;
 
@@ -104,7 +105,7 @@ pub struct FeeData {
     pub tx_fee: u128,
 }
 
-// Strips all occurrences of `key` from the JSON `Value`
+/// Strips all occurrences of `key` from the JSON `Value`
 fn strip_key_iterative(root: &mut Value, key: &str) {
     // We keep a stack of pointers to Values we need to visit.
     let mut stack: Vec<*mut Value> = vec![root as *mut Value];
@@ -131,6 +132,31 @@ fn strip_key_iterative(root: &mut Value, key: &str) {
             }
             _ => {}
         }
+    }
+}
+
+/// Sanitizes a JSON-RPC response for RollupConfig by removing all occurrences of "minBaseFee" and deserializing the "result" field.
+/// FIXME: Drop the minBaseFee field removal once op-succinct is aligned with the Jovian hard-fork (and the minBaseFee is present in kona.RollupConfig). I.e. the function should only one line: serde_json::from_value(response["result"].clone()).map_err(Into::into)
+fn  sanitize_rollup_config_response<T>(response: &mut Value) -> Result<T> where T: serde::de::DeserializeOwned {
+
+    // Raise a warning if "minBaseFee" is present anywhere in the response
+    if response.to_string().contains("minBaseFee") {
+        tracing::warn!("Warning: RollupConfig response contains `minBaseFee`. This indicates a (non-supported) Jovian fork. To avoid issues, it will be removed before deserialization but may cause problems later.");
+
+        // Take ownership of "result" (no cloning the whole response)
+        let mut result = response
+            .get_mut("result")
+            .map(|v| std::mem::take(v))
+            .ok_or_else(|| anyhow::anyhow!("Malformed JSON-RPC response: missing `result`"))?;
+
+        // Remove "minBaseFee" occurrences
+        strip_key_iterative(&mut result, "minBaseFee");
+
+        // Deserialize into the requested type
+        serde_json::from_value::<T>(result).with_context(|| format!("Failed to deserialize JSON-RPC `result` into {}", std::any::type_name::<T>()))
+    } else {
+        // If "minBaseFee" is not present, proceed as normal
+        serde_json::from_value(response["result"].clone()).map_err(Into::into)
     }
 }
 
@@ -404,19 +430,7 @@ impl OPSuccinctDataFetcher {
             return Err(anyhow::anyhow!("Error calling {method}: {error_message}"));
         }
 
-
-        // Take ownership of "result" (no cloning the whole response)
-        let mut result = response
-            .get_mut("result")
-            .map(|v| std::mem::take(v))
-            .ok_or_else(|| anyhow::anyhow!("Malformed JSON-RPC response: missing `result`"))?;
-
-        // Remove "minBaseFee" occurrences
-        strip_key_iterative(&mut result, "minBaseFee");
-
-        // Deserialize into the requested type
-        serde_json::from_value::<T>(result)
-            .with_context(|| format!("Failed to deserialize JSON-RPC `result` into {}", std::any::type_name::<T>()))
+        sanitize_rollup_config_response(&mut response)
     }
 
     /// Fetch arbitrary data from the RPC.
@@ -546,6 +560,23 @@ impl OPSuccinctDataFetcher {
         let mut low = l1_origin.number;
         let mut high = latest_l1_header.number;
         let mut first_valid = None;
+        let mut first_valid_l2_safe_head = 0;
+        
+        // Ensure that the high block has an L2 safe head >= l2_end_block.
+        let l2_tip_in_high: SafeHeadResponse = self
+            .fetch_rpc_data_with_mode(
+                RPCMode::L2Node,
+                "optimism_safeHeadAtL1Block",
+                vec![format!("0x{high:x}").into()],
+            )
+            .await?;
+        if l2_tip_in_high.safe_head.number < l2_end_block {
+            let err_txt = format!("No L1 block found with L2 safe head >= {l2_end_block}. Latest finalized L1 block number: {} has L2 safe head: {}", latest_l1_header.number, l2_tip_in_high.safe_head.number);
+            tracing::warn!(err_txt);
+            return Err(anyhow::anyhow!(err_txt));
+        }
+
+        info!("Last L1 finalized block: {:?} (high). L1 origin for L2 end block: {:?} (low). Starting binary on closest L1 block with L2 safe head >= L2 end block", high, low);
 
         while low <= high {
             let mid = low + (high - low) / 2;
@@ -562,12 +593,14 @@ impl OPSuccinctDataFetcher {
             if l2_safe_head >= l2_end_block {
                 // Found a valid block, save it and keep searching lower.
                 first_valid = Some((result.l1_block.hash, result.l1_block.number));
+                first_valid_l2_safe_head = l2_safe_head;
                 high = mid - 1;
             } else {
                 // Need to search higher
                 low = mid + 1;
             }
         }
+        info!("Binary search result: L1 block number {}, with l2 safe head {}", first_valid.map(|(_, num)| num).unwrap_or(0), first_valid_l2_safe_head);
 
         first_valid.ok_or_else(|| {
             anyhow::anyhow!(

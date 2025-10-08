@@ -24,7 +24,7 @@ To run my test:
 
 ```bash
 cd scripts/prove/tests
-RUST_LOG=info cargo test -p op-succinct-prove --test range_ethereum_env -- --nocapture
+L2_START_BLOCK=517970 L2_RANGE=1 cargo test -p op-succinct-prove --test range_ethereum_env -- --nocapture
 ```
 
 Logging for the range programs now uses `tracing`. Guest log lines are bridged back into the host logger under the

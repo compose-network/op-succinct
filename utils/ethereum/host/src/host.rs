@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use kona_host::single::SingleChainHost;
 use op_succinct_ethereum_client_utils::executor::ETHDAWitnessExecutor;
 use op_succinct_host_utils::{fetcher::OPSuccinctDataFetcher, host::OPSuccinctHost};
+use tracing::info;
 
 #[derive(Clone)]
 pub struct SingleChainOPSuccinctHost {
@@ -35,6 +36,7 @@ impl OPSuccinctHost for SingleChainOPSuccinctHost {
         let l1_head_hash = match l1_head_hash {
             Some(hash) => hash,
             None => {
+                info!("L1 head hash associated to L2 end block was not provided. Thus, calculating it...");
                 self.calculate_safe_l1_head(&self.fetcher, l2_end_block, safe_db_fallback).await?
             }
         };

@@ -3,12 +3,11 @@ use std::sync::Arc;
 use tracing_subscriber;
 
 use anyhow::Result;
-use common::post_to_github_pr;
 use op_succinct_host_utils::{
     block_range::get_rolling_block_range,
     fetcher::OPSuccinctDataFetcher,
     host::OPSuccinctHost,
-    stats::{ExecutionStats, MarkdownExecutionStats},
+    stats::{ExecutionStats},
     witness_generation::WitnessGenerator,
 };
 use op_succinct_proof_utils::initialize_host;

@@ -15,7 +15,7 @@ use op_succinct_proof_utils::initialize_host;
 use op_succinct_prove::execute_multi;
 
 // Usage example:
-// L2_START_BLOCK=517970 L2_RANGE=1 cargo test -p op-succinct-prove --test range_ethereum_env -- --nocapture
+// L2_START_BLOCK=517970 L2_RANGE=1 cargo test -p op-succinct-prove --test range_ethereum -- --nocapture
 
 /// Integration-style test that executes the Ethereum range zk program using RPC endpoints
 /// specified in the workspace `.env` file.

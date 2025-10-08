@@ -24,7 +24,7 @@ To run my test:
 
 ```bash
 cd scripts/prove/tests
-L2_START_BLOCK=517970 L2_RANGE=1 cargo test -p op-succinct-prove --test range_ethereum_env -- --nocapture
+L2_START_BLOCK=517970 L2_RANGE=1 cargo test -p op-succinct-prove --test range_ethereum -- --nocapture
 ```
 
 Logging for the range programs now uses `tracing`. Guest log lines are bridged back into the host logger under the
@@ -33,7 +33,7 @@ Logging for the range programs now uses `tracing`. Guest log lines are bridged b
 
 ```bash
 cargo prove build -p range --features tracing-subscriber
-RUST_LOG=info,sp1::stdout=info cargo test -p op-succinct-prove --test range_ethereum_env -- --nocapture
+RUST_LOG=info,sp1::stdout=info cargo test -p op-succinct-prove --test range_ethereum -- --nocapture
 ```
 
 Ask me for the `.env` file if needed.

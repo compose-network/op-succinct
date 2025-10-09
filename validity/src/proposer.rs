@@ -787,7 +787,7 @@ where
         }
 
         // Respect single-shot counter for range requests as well
-        let consider_range = !self.requester_config.single_shot || self.range_requests_sent < 1;
+        let consider_range = !self.requester_config.single_shot || self.range_requests_sent < 3;
 
         let unreq_range_request = if consider_range {
             self

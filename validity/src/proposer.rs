@@ -188,6 +188,70 @@ where
         Ok(proposer)
     }
 
+    /// Cancel any unrequested aggregation requests that cannot be validated exclusively using
+    /// REAL (network-proven) range proofs within their span. This prevents aggregating over mock
+    /// range proofs created by prior runs.
+    async fn cancel_invalid_unrequested_aggregations(&self) -> Result<()> {
+        // Fetch all unrequested requests for this commitment and chains
+        let mut unrequested = self
+            .driver_config
+            .driver_db_client
+            .fetch_requests_by_status(
+                RequestStatus::Unrequested,
+                &self.program_config.commitments,
+                self.requester_config.l1_chain_id,
+                self.requester_config.l2_chain_id,
+            )
+            .await?;
+        // Focus only on Aggregation
+        unrequested.retain(|r| r.req_type == RequestType::Aggregation);
+
+        if unrequested.is_empty() {
+            return Ok(());
+        }
+
+        // Fetch all completed requests once, to filter REAL range proofs efficiently
+        let mut completed = self
+            .driver_config
+            .driver_db_client
+            .fetch_requests_by_status(
+                RequestStatus::Complete,
+                &self.program_config.commitments,
+                self.requester_config.l1_chain_id,
+                self.requester_config.l2_chain_id,
+            )
+            .await?;
+        completed.retain(|r| r.req_type == RequestType::Range && r.mode == RequestMode::Real);
+        completed.sort_by_key(|r| r.start_block);
+
+        for agg in unrequested {
+            let mut range_subset: Vec<OPSuccinctRequest> = completed
+                .iter()
+                .filter(|r| r.start_block >= agg.start_block && r.end_block <= agg.end_block)
+                .cloned()
+                .collect();
+            range_subset.sort_by_key(|r| r.start_block);
+
+            // Use existing validator; it also checks all ranges are REAL by our earlier guard.
+            let valid = self.validate_aggregation_request(&range_subset, &agg).await;
+            if !valid {
+                tracing::info!(
+                    id = agg.id,
+                    start_block = agg.start_block,
+                    end_block = agg.end_block,
+                    "Cancelling unrequested aggregation relying on mock/missing real range proofs"
+                );
+                let _ = self
+                    .driver_config
+                    .driver_db_client
+                    .update_request_status(agg.id, RequestStatus::Cancelled)
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Use the in-memory index of the highest block number to add new ranges to the database.
     #[tracing::instrument(name = "proposer.add_new_ranges", skip(self))]
     pub async fn add_new_ranges(&self) -> Result<()> {
@@ -507,18 +571,28 @@ where
             return Ok(());
         }
 
-        // Get the completed range proofs with a start block greater than the latest proposed block
-        // number. These blocks are sorted.
-        let mut completed_range_proofs = self
-            .driver_config
-            .driver_db_client
-            .fetch_completed_ranges(
-                &self.program_config.commitments,
-                latest_proposed_block_number as i64,
-                self.requester_config.l1_chain_id,
-                self.requester_config.l2_chain_id,
-            )
-            .await?;
+        // Gather completed REAL (network) range proofs starting at or after latest_proposed_block_number
+        let mut completed_range_proofs = {
+            let all_completed = self
+                .driver_config
+                .driver_db_client
+                .fetch_requests_by_status(
+                    RequestStatus::Complete,
+                    &self.program_config.commitments,
+                    self.requester_config.l1_chain_id,
+                    self.requester_config.l2_chain_id,
+                )
+                .await?;
+            let mut real_ranges: Vec<(i64, i64)> = all_completed
+                .into_iter()
+                .filter(|r| r.req_type == RequestType::Range)
+                .filter(|r| r.mode == RequestMode::Real)
+                .filter(|r| r.start_block >= latest_proposed_block_number as i64)
+                .map(|r| (r.start_block, r.end_block))
+                .collect();
+            real_ranges.sort_by_key(|(s, _)| *s);
+            real_ranges
+        };
 
         // Sort the completed range proofs by start block.
         completed_range_proofs.sort_by_key(|(start_block, _)| *start_block);
@@ -754,17 +828,25 @@ where
         if let Some(unreq_agg_request) = unreq_agg_request {
             // Fetch consecutive range proofs from the database associated with the aggregation
             // proof request.
-            let range_proofs = self
-                .proof_requester
-                .db_client
-                .get_consecutive_complete_range_proofs(
-                    unreq_agg_request.start_block,
-                    unreq_agg_request.end_block,
+            // Build the consecutive REAL range proofs list for validation.
+            let all_completed = self
+                .driver_config
+                .driver_db_client
+                .fetch_requests_by_status(
+                    RequestStatus::Complete,
                     &self.program_config.commitments,
                     self.requester_config.l1_chain_id,
                     self.requester_config.l2_chain_id,
                 )
                 .await?;
+            let mut range_proofs: Vec<OPSuccinctRequest> = all_completed
+                .into_iter()
+                .filter(|r| r.req_type == RequestType::Range)
+                .filter(|r| r.mode == RequestMode::Real)
+                .filter(|r| r.start_block >= unreq_agg_request.start_block)
+                .filter(|r| r.end_block <= unreq_agg_request.end_block)
+                .collect();
+            range_proofs.sort_by_key(|r| r.start_block);
 
             // Validate the aggregation proof request
             match self.validate_aggregation_request(&range_proofs, &unreq_agg_request).await {
@@ -840,6 +922,16 @@ where
                 end_block = ?agg_request.end_block,
                 commitments = ?self.program_config.commitments,
                 "No consecutive span proof range found for request"
+            );
+            return false;
+        }
+
+        // Ensure all constituent range proofs are network-proven (Real mode)
+        if range_proofs.iter().any(|p| p.mode != RequestMode::Real) {
+            warn!(
+                start_block = ?agg_request.start_block,
+                end_block = ?agg_request.end_block,
+                "Aggregation request contains non-network (mock) range proofs; rejecting"
             );
             return false;
         }
@@ -1467,6 +1559,10 @@ where
 
         // Add new range requests to the database.
         self.add_new_ranges().await?;
+
+        // Cleanup: cancel any unrequested aggregation requests that cannot be validated using only
+        // REAL (network) range proofs, to avoid aggregating over mock ranges left from prior runs.
+        self.cancel_invalid_unrequested_aggregations().await?;
 
         // Create aggregation proofs based on the completed range proofs. Checkpoints the block hash
         // associated with the aggregation proof in advance.

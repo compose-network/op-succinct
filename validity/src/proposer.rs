@@ -734,7 +734,7 @@ where
 
         // If aggregation is enabled and allowed by single-shot counter, prefer an unrequested aggregation proof.
         let consider_agg = self.requester_config.enable_aggregation
-            && (!self.requester_config.single_shot || self.agg_requests_sent < 1);
+            && (!self.requester_config.single_shot || self.agg_requests_sent < 2);
 
         let unreq_agg_request = if consider_agg {
             self

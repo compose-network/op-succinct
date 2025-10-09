@@ -52,11 +52,11 @@ pub struct RequesterConfig {
     pub op_succinct_config_name_hash: B256,
     pub mock: bool,
 
-    /// Whether to fallback to timestamp-based L1 head estimation even though SafeDB is not
+    /// Whether to fall back to timestamp-based L1 head estimation even though SafeDB is not
     /// activated for op-node.
     pub safe_db_fallback: bool,
 
-    /// Whether to to expect NETWORK_PRIVATE_KEY to be an AWS KMS key ARN instead of a
+    /// Whether to expect NETWORK_PRIVATE_KEY to be an AWS KMS key ARN instead of a
     /// plaintext private key.
     pub use_kms_requester: bool,
 
@@ -77,4 +77,12 @@ pub struct RequesterConfig {
 
     /// The gas limit to use for aggregation proofs.
     pub agg_gas_limit: u64,
+
+    /// Minimum L2 block number to consider when creating or requesting proofs.
+    /// Requests starting before this block will be ignored. Use 0 to disable.
+    pub min_l2_block: u64,
+
+    /// Whether aggregation proofs are enabled. When false, proposer will only
+    /// create/request range proofs and skip aggregation-related flows.
+    pub enable_aggregation: bool,
 }

@@ -187,11 +187,14 @@ where
     #[tracing::instrument(name = "proposer.add_new_ranges", skip(self))]
     pub async fn add_new_ranges(&self) -> Result<()> {
         // Get the latest proposed block number on the contract.
-        let latest_proposed_block_number = get_latest_proposed_block_number(
+        let mut latest_proposed_block_number = get_latest_proposed_block_number(
             self.contract_config.l2oo_address,
             self.driver_config.fetcher.as_ref(),
         )
         .await?;
+
+        // Enforce minimum start block if configured.
+        latest_proposed_block_number = latest_proposed_block_number.max(self.requester_config.min_l2_block);
 
         let finalized_block_number = match self
             .proof_requester
@@ -698,22 +701,31 @@ where
     /// aggregation vkey, return that. Otherwise, return a range proof with the lowest start
     /// block.
     async fn get_next_unrequested_proof(&self) -> Result<Option<OPSuccinctRequest>> {
-        let latest_proposed_block_number = get_latest_proposed_block_number(
+        let mut latest_proposed_block_number = get_latest_proposed_block_number(
             self.contract_config.l2oo_address,
             self.driver_config.fetcher.as_ref(),
         )
         .await?;
 
-        let unreq_agg_request = self
-            .driver_config
-            .driver_db_client
-            .fetch_unrequested_agg_proof(
-                latest_proposed_block_number as i64,
-                &self.program_config.commitments,
-                self.requester_config.l1_chain_id,
-                self.requester_config.l2_chain_id,
-            )
-            .await?;
+        // Respect minimum start block filter when selecting next proof to request.
+        latest_proposed_block_number = latest_proposed_block_number
+            .max(self.requester_config.min_l2_block);
+
+        // If aggregation is enabled, prefer an unrequested aggregation proof for the same start block.
+        let unreq_agg_request = if self.requester_config.enable_aggregation {
+            self
+                .driver_config
+                .driver_db_client
+                .fetch_unrequested_agg_proof(
+                    latest_proposed_block_number as i64,
+                    &self.program_config.commitments,
+                    self.requester_config.l1_chain_id,
+                    self.requester_config.l2_chain_id,
+                )
+                .await?
+        } else {
+            None
+        };
 
         if let Some(unreq_agg_request) = unreq_agg_request {
             // Fetch consecutive range proofs from the database associated with the aggregation
@@ -1415,13 +1427,17 @@ where
 
         // Create aggregation proofs based on the completed range proofs. Checkpoints the block hash
         // associated with the aggregation proof in advance.
-        self.create_aggregation_proofs().await?;
+        if self.requester_config.enable_aggregation {
+            self.create_aggregation_proofs().await?;
+        }
 
         // Request all unrequested proofs from the prover network.
         self.request_queued_proofs().await?;
 
         // Submit any aggregation proofs that are complete.
-        self.submit_agg_proofs().await?;
+        if self.requester_config.enable_aggregation {
+            self.submit_agg_proofs().await?;
+        }
 
         // Update the chain lock.
         self.proof_requester

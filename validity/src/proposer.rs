@@ -53,6 +53,9 @@ where
     requester_config: RequesterConfig,
     proof_requester: Arc<OPSuccinctProofRequester<H>>,
     tasks: Arc<Mutex<TaskMap>>,
+    // Simple counters to limit how many requests we send when SINGLE_SHOT is enabled
+    range_requests_sent: usize,
+    agg_requests_sent: usize,
 }
 
 impl<P, H: OPSuccinctHost> Proposer<P, H>
@@ -179,6 +182,8 @@ where
             requester_config,
             proof_requester,
             tasks: Arc::new(Mutex::new(HashMap::new())),
+            range_requests_sent: 0,
+            agg_requests_sent: 0,
         };
         Ok(proposer)
     }
@@ -634,7 +639,7 @@ where
     /// Note: In the future, submit up to MAX_CONCURRENT_PROOF_REQUESTS at a time. Don't do one per
     /// loop.
     #[tracing::instrument(name = "proposer.request_queued_proofs", skip(self))]
-    async fn request_queued_proofs(&self) -> Result<()> {
+    async fn request_queued_proofs(&mut self) -> Result<()> {
         let commitments = self.program_config.commitments.clone();
         let l1_chain_id = self.requester_config.l1_chain_id;
         let l2_chain_id = self.requester_config.l2_chain_id;
@@ -688,6 +693,17 @@ where
                 end_block = request.end_block,
                 "Making proof request"
             );
+            // In single-shot mode, increment counters to limit subsequent sends.
+            if self.requester_config.single_shot {
+                match request.req_type {
+                    RequestType::Range => {
+                        self.range_requests_sent = self.range_requests_sent.saturating_add(1)
+                    }
+                    RequestType::Aggregation => {
+                        self.agg_requests_sent = self.agg_requests_sent.saturating_add(1)
+                    }
+                }
+            }
             let request_clone = request.clone();
             let proof_requester = self.proof_requester.clone();
             let handle =
@@ -716,8 +732,11 @@ where
         latest_proposed_block_number = latest_proposed_block_number
             .max(self.requester_config.min_l2_block);
 
-        // If aggregation is enabled, prefer an unrequested aggregation proof for the same start block.
-        let unreq_agg_request = if self.requester_config.enable_aggregation {
+        // If aggregation is enabled and allowed by single-shot counter, prefer an unrequested aggregation proof.
+        let consider_agg = self.requester_config.enable_aggregation
+            && (!self.requester_config.single_shot || self.agg_requests_sent < 1);
+
+        let unreq_agg_request = if consider_agg {
             self
                 .driver_config
                 .driver_db_client
@@ -767,16 +786,23 @@ where
             }
         }
 
-        let unreq_range_request = self
-            .driver_config
-            .driver_db_client
-            .fetch_first_unrequested_range_proof(
-                latest_proposed_block_number as i64,
-                &self.program_config.commitments,
-                self.requester_config.l1_chain_id,
-                self.requester_config.l2_chain_id,
-            )
-            .await?;
+        // Respect single-shot counter for range requests as well
+        let consider_range = !self.requester_config.single_shot || self.range_requests_sent < 1;
+
+        let unreq_range_request = if consider_range {
+            self
+                .driver_config
+                .driver_db_client
+                .fetch_first_unrequested_range_proof(
+                    latest_proposed_block_number as i64,
+                    &self.program_config.commitments,
+                    self.requester_config.l1_chain_id,
+                    self.requester_config.l2_chain_id,
+                )
+                .await?
+        } else {
+            None
+        };
 
         if let Some(unreq_range_request) = unreq_range_request {
             return Ok(Some(unreq_range_request));
@@ -1390,7 +1416,7 @@ where
     }
 
     #[tracing::instrument(name = "proposer.run", skip(self))]
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         // Handle the case where the proposer is being re-started and the proposer state needs to be
         // updated.
         self.initialize_proposer().await?;
@@ -1420,7 +1446,7 @@ where
     }
 
     // Run a single loop of the validity proposer.
-    async fn run_loop_iteration(&self) -> Result<()> {
+    async fn run_loop_iteration(&mut self) -> Result<()> {
         // Validate the requester config matches the contract.
         self.validate_contract_config().await?;
 

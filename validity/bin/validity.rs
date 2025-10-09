@@ -74,13 +74,14 @@ async fn main() -> Result<()> {
         agg_gas_limit: env_config.agg_gas_limit,
         min_l2_block: env_config.min_l2_block,
         enable_aggregation: env_config.enable_aggregation,
+        single_shot: env_config.single_shot,
     };
 
     let l1_provider = ProviderBuilder::new().connect_http(env_config.l1_rpc.clone());
 
     let host = initialize_host(fetcher.clone().into());
 
-    let proposer = Proposer::new(
+    let mut proposer = Proposer::new(
         l1_provider,
         db_client.clone(),
         fetcher.into(),

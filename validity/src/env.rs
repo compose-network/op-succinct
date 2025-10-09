@@ -38,6 +38,8 @@ pub struct EnvironmentConfig {
     /// Enable aggregation proofs (true by default). If false, proposer will
     /// not create or request aggregation proofs.
     pub enable_aggregation: bool,
+    /// Request only one range and one aggregation proof total (per run)
+    pub single_shot: bool,
     /// SSV: 
     /// Optional HTTP endpoint for SHARED PUBLISHER
     /// When set, the proposer will POST aggregation outputs to this URL after a successful onchain
@@ -159,7 +161,8 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         agg_cycle_limit: get_env_var("AGG_CYCLE_LIMIT", Some(1_000_000_000_000))?,     // 1 trillion
         agg_gas_limit: get_env_var("AGG_GAS_LIMIT", Some(1_000_000_000_000))?,         // 1 trillion
         min_l2_block: 520000, // get_env_var("MIN_L2_BLOCK", Some(0))?,
-        enable_aggregation: true, //get_env_var("ENABLE_AGGREGATION", Some(true))?,
+        enable_aggregation: true, // get_env_var("ENABLE_AGGREGATION", Some(true))?,
+        single_shot: false, // get_env_var("SINGLE_SHOT", Some(false))?,
         // Optional: HTTP endpoint for the shared publisher service.
         // Example: http://localhost:8081/v1/proofs/op-succinct
         publisher_url: env::var("SHARED_PUBLISHER_URL").ok().and_then(|s| Url::parse(&s).ok()),

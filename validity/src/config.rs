@@ -85,4 +85,9 @@ pub struct RequesterConfig {
     /// Whether aggregation proofs are enabled. When false, proposer will only
     /// create/request range proofs and skip aggregation-related flows.
     pub enable_aggregation: bool,
+
+    /// If true, the proposer will request at most one Range proof
+    /// and at most one Aggregation proof from the SP1 network for
+    /// the lifetime of the process.
+    pub single_shot: bool,
 }

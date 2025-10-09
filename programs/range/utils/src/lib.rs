@@ -58,7 +58,7 @@ where
     //                          PROLOGUE                          //
     ////////////////////////////////////////////////////////////////
 
-    log_info!("Starting blocks verification...");
+    info!("Starting blocks verification...");
 
     let (oracle, beacon, mailbox_store) = witness_data.get_oracle_and_blob_provider().await.unwrap();
 
@@ -81,17 +81,17 @@ where
             .await
             .unwrap();
 
-        log_info!("Executor run pipeline");
+        info!("Executor run pipeline");
         executor.run(boot_info, pipeline, cursor, l2_provider).await.unwrap()
         // boot_info
         }
         None => boot_info,
     };
 
-    log_info!("Finished blocks verification. Now computing mailbox root...");
+    info!("Finished blocks verification. Now computing mailbox root...");
 
     let mailbox_root = compute_mailbox_root(mailbox_store.clone());
-    log_info!("Mailbox root hash computed: {:?}", mailbox_root);
+    info!("Mailbox root hash computed: {:?}", mailbox_root);
 
     let boot_info_struct = BootInfoStruct {
         l1Head: boot_info.l1_head,

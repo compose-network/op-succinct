@@ -473,11 +473,16 @@ where
     pub async fn create_aggregation_proofs(&self) -> Result<()> {
         // Check if there's an Aggregation proof with the same start block AND range verification
         // key commitment AND aggregation vkey. If so, return.
-        let latest_proposed_block_number = get_latest_proposed_block_number(
+        let mut latest_proposed_block_number = get_latest_proposed_block_number(
             self.contract_config.l2oo_address,
             self.driver_config.fetcher.as_ref(),
         )
         .await? as i64;
+
+        // Apply minimum L2 block for aggregation flows
+        latest_proposed_block_number = latest_proposed_block_number
+            .max(self.requester_config.min_l2_block as i64);
+
 
         // Get all active Aggregation proofs with the same start block, range vkey commitment, and
         // aggregation vkey.
@@ -881,11 +886,15 @@ where
     /// Relay all completed aggregation proofs to the contract.
     #[tracing::instrument(name = "proposer.submit_agg_proofs", skip(self))]
     async fn submit_agg_proofs(&self) -> Result<()> {
-        let latest_proposed_block_number = get_latest_proposed_block_number(
+        let mut latest_proposed_block_number = get_latest_proposed_block_number(
             self.contract_config.l2oo_address,
             self.driver_config.fetcher.as_ref(),
         )
         .await?;
+
+        // Respect minimum L2 block for aggregation flows
+        latest_proposed_block_number = latest_proposed_block_number
+            .max(self.requester_config.min_l2_block);
 
         // See if there is an aggregation proof that is complete for this start block. NOTE: There
         // should only be one "pending" aggregation proof at a time for a specific start block.
@@ -1271,19 +1280,23 @@ where
     /// Fetch and log the proposer metrics.
     async fn log_proposer_metrics(&self) -> Result<()> {
         // Get the latest proposed block number on the contract.
-        let latest_proposed_block_number = get_latest_proposed_block_number(
+        let mut latest_proposed_block_number = get_latest_proposed_block_number(
             self.contract_config.l2oo_address,
             self.driver_config.fetcher.as_ref(),
         )
         .await?;
 
         // Get all completed range proofs from the database.
+        // Apply min block for metrics to reflect the active aggregation start
+        let agg_start_block = latest_proposed_block_number
+            .max(self.requester_config.min_l2_block) as i64;
+
         let completed_range_proofs = self
             .driver_config
             .driver_db_client
             .fetch_completed_ranges(
                 &self.program_config.commitments,
-                latest_proposed_block_number as i64,
+                agg_start_block,
                 self.requester_config.l1_chain_id,
                 self.requester_config.l2_chain_id,
             )
@@ -1369,8 +1382,9 @@ where
 
         let submission_interval =
             contract_submission_interval.max(self.requester_config.submission_interval);
+        let min_agg_start = latest_proposed_block_number.max(self.requester_config.min_l2_block);
         ValidityGauge::MinBlockToProveToAgg
-            .set((latest_proposed_block_number + submission_interval) as f64);
+            .set((min_agg_start + submission_interval) as f64);
 
         Ok(())
     }

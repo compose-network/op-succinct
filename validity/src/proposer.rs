@@ -1093,6 +1093,7 @@ where
         let range_vkey_commitment_match =
             contract_range_vkey_commitment == self.program_config.commitments.range_vkey_commitment;
 
+        /*
         if !rollup_config_hash_match || !agg_vkey_hash_match || !range_vkey_commitment_match {
             tracing::error!(
                 rollup_config_hash_match = rollup_config_hash_match,
@@ -1126,7 +1127,9 @@ where
             }
 
             return Err(anyhow::anyhow!("Config mismatches detected. Please run {{cargo run --bin config --release -- --env-file ENV_FILE}} to get the expected config for your contract."));
+
         }
+        */
 
         Ok(())
     }

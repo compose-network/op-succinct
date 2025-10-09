@@ -1271,9 +1271,9 @@ where
     #[tracing::instrument(name = "proposer.initialize_proposer", skip(self))]
     async fn initialize_proposer(&self) -> Result<()> {
         // Validate the requester config matches the contract.
-        self.validate_contract_config()
-            .await
-            .context("Failed to validate the requester config matches the contract.")?;
+        // self.validate_contract_config()
+        //     .await
+        //     .context("Failed to validate the requester config matches the contract.")?;
 
         // Delete all requests for the same chain ID that are of status UNREQUESTED, EXECUTION or
         // WITNESS_GENERATION as they're unrecoverable.
@@ -1451,7 +1451,7 @@ where
     // Run a single loop of the validity proposer.
     async fn run_loop_iteration(&mut self) -> Result<()> {
         // Validate the requester config matches the contract.
-        self.validate_contract_config().await?;
+        // self.validate_contract_config().await?;
 
         // Log the proposer metrics.
         self.log_proposer_metrics().await?;

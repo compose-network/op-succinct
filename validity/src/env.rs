@@ -137,9 +137,9 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         dgf_address: get_env_var("DGF_ADDRESS", Some(Address::ZERO))?,
 
         // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert
-        range_proof_interval: 100,
-        submission_interval: 100,
-        mock: true, // TODO: WIP
+        range_proof_interval: 300,
+        submission_interval: 300,
+        mock: false, // TODO: WIP
 
         max_concurrent_witness_gen: get_env_var("MAX_CONCURRENT_WITNESS_GEN", Some(1))?,
         max_concurrent_proof_requests: get_env_var("MAX_CONCURRENT_PROOF_REQUESTS", Some(1))?,
@@ -158,8 +158,8 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         range_gas_limit: get_env_var("RANGE_GAS_LIMIT", Some(1_000_000_000_000))?,     // 1 trillion
         agg_cycle_limit: get_env_var("AGG_CYCLE_LIMIT", Some(1_000_000_000_000))?,     // 1 trillion
         agg_gas_limit: get_env_var("AGG_GAS_LIMIT", Some(1_000_000_000_000))?,         // 1 trillion
-        min_l2_block: get_env_var("MIN_L2_BLOCK", Some(0))?,
-        enable_aggregation: get_env_var("ENABLE_AGGREGATION", Some(true))?,
+        min_l2_block: 520000, // get_env_var("MIN_L2_BLOCK", Some(0))?,
+        enable_aggregation: false, //get_env_var("ENABLE_AGGREGATION", Some(true))?,
         // Optional: HTTP endpoint for the shared publisher service.
         // Example: http://localhost:8081/v1/proofs/op-succinct
         publisher_url: env::var("SHARED_PUBLISHER_URL").ok().and_then(|s| Url::parse(&s).ok()),

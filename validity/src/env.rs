@@ -19,6 +19,9 @@ pub struct EnvironmentConfig {
     pub agg_proof_mode: SP1ProofMode,
     pub l2oo_address: Address,
     pub dgf_address: Address,
+    /// Whether to use the built-in hardcoded L2OO address instead of reading from env.
+    /// This can be used (set to true) when you want only one rollup to request proofs to the SP1 network (to save funds on tests)
+    pub use_hardcoded_l2oo: bool,
     pub range_proof_interval: u64,
     pub max_concurrent_witness_gen: u64,
     pub max_concurrent_proof_requests: u64,
@@ -119,9 +122,16 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
     }
 
 
-    let l2oo_address = "0x7b1a1AD51d4125AbE05c318544Cee585B26D6966"
-        .parse::<Address>()
-        .expect("Invalid address format");
+    // L2OO address source can be configured via USE_HARDCODED_L2OO.
+    // If true, use the known default; otherwise read from env L2OO_ADDRESS.
+    let mut use_hardcoded_l2oo: bool = get_env_var("USE_HARDCODED_L2OO", Some(false))?;
+    let l2oo_address: Address = if use_hardcoded_l2oo {
+        "0x7b1a1AD51d4125AbE05c318544Cee585B26D6966"
+            .parse::<Address>()
+            .expect("Invalid address format")
+    } else {
+        get_env_var("L2OO_ADDRESS", Some(Address::ZERO))?
+    };
 
     println!("Mock mode {}", mock);
 
@@ -134,8 +144,8 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         range_proof_strategy,
         agg_proof_strategy,
         agg_proof_mode,
-        // l2oo_address: get_env_var("L2OO_ADDRESS", Some(Address::ZERO))?,
-        l2oo_address: l2oo_address,
+        l2oo_address,
+        use_hardcoded_l2oo,
         dgf_address: get_env_var("DGF_ADDRESS", Some(Address::ZERO))?,
 
         // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert

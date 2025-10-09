@@ -125,7 +125,7 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
     // L2OO address source can be configured via USE_HARDCODED_L2OO.
     // If true, use the known default; otherwise read from env L2OO_ADDRESS.
     let mut use_hardcoded_l2oo: bool = get_env_var("USE_HARDCODED_L2OO", Some(false))?;
-    use_hardcoded_l2oo = false;
+    use_hardcoded_l2oo = true;
     let l2oo_address: Address = if use_hardcoded_l2oo {
         "0x7b1a1AD51d4125AbE05c318544Cee585B26D6966"
             .parse::<Address>()
@@ -152,7 +152,7 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert
         range_proof_interval: 300,
         submission_interval: 300,
-        mock: false, // TODO: WIP
+        mock: true, // TODO: WIP
 
         max_concurrent_witness_gen: get_env_var("MAX_CONCURRENT_WITNESS_GEN", Some(1))?,
         max_concurrent_proof_requests: get_env_var("MAX_CONCURRENT_PROOF_REQUESTS", Some(1))?,

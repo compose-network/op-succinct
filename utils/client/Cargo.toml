@@ -43,3 +43,4 @@ spin.workspace = true
 # kzg
 kzg-rs.workspace = true
 cfg-if.workspace = true
+tracing-subscriber = "0.2.25"

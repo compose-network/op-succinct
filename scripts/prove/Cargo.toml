@@ -46,6 +46,8 @@ serde_json.workspace = true
 regex = "1"
 owo-colors = "4"
 time = { version = "0.3", features = ["formatting"] }
+bincode = "1"
+alloy-sol-types.workspace = true
 
 [build-dependencies]
 op-succinct-build-utils.workspace = true

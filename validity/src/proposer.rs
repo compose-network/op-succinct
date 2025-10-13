@@ -1,7 +1,7 @@
 use std::{collections::HashMap, env, str::FromStr, sync::Arc, time::Duration};
 
 use alloy_eips::BlockId;
-use alloy_primitives::{B256, U256};
+use alloy_primitives::{B256, U256, Address};
 use alloy_provider::{Provider};
 use anyhow::{anyhow, Context, Result};
 use futures_util::{stream, StreamExt, TryStreamExt};
@@ -275,7 +275,7 @@ where
             .await?
         {
             Some(block_number) => {
-                info!("Found finalized block number: {}", block_number);
+                debug!("Found finalized block number: {}", block_number);
                 block_number
             }
             None => {
@@ -1033,16 +1033,26 @@ where
             None => return Ok(()),
         };
 
-        // Relay the aggregation proof.
-        let transaction_hash = match self.relay_aggregation_proof(&completed_agg_proof).await {
-            Ok(transaction_hash) => transaction_hash,
-            Err(e) => {
-                ValidityGauge::RelayAggProofErrorCount.increment(1.0);
-                return Err(e);
-            }
-        };
+        // WIP: Relay the aggregation proof to L1.
+        // let transaction_hash = match self.relay_aggregation_proof(&completed_agg_proof).await {
+        //     Ok(transaction_hash) => transaction_hash,
+        //     Err(e) => {
+        //         ValidityGauge::RelayAggProofErrorCount.increment(1.0);
+        //         return Err(e);
+        //     }
+        // };
+        //
+        let transaction_hash = B256::ZERO;
+        // info!("Relayed aggregation proof. Transaction hash: {:?}", transaction_hash);
 
-        info!("Relayed aggregation proof. Transaction hash: {:?}", transaction_hash);
+
+        // Relay the aggregation proof to SP.
+        if let Err(e) = self.relay_aggregation_proof_to_shared_publisher(&completed_agg_proof).await {
+            ValidityGauge::RelayAggProofErrorCount.increment(1.0);
+            return Err(e);
+        } else {
+            info!("Successfully sent aggregation proof to shared publisher");
+        }
 
         // Update the request to status RELAYED.
         self.driver_config
@@ -1063,10 +1073,10 @@ where
     /// with the proof. Otherwise, propose the L2 output.
     /// SSV: we do not submit on-chain; only to the Shared Publisher!!!
     ///
-    async fn relay_aggregation_proof(
+    async fn relay_aggregation_proof_to_shared_publisher(
         &self,
         completed_agg_proof: &OPSuccinctRequest,
-    ) -> Result<B256> {
+    ) -> Result<()> {
         // Get the output at the end block of the last completed aggregation proof.
         let output = self
             .driver_config
@@ -1146,24 +1156,104 @@ where
                 completed_agg_proof.proof.as_deref(),
                 mailbox_info,
             )
-            .await
+                .await
             {
                 Ok(_) => info!(
-                    start_block,
-                    end_block,
-                    publisher = %publisher_url,
-                    "Published aggregation outputs to shared publisher"
-                ),
+                start_block,
+                end_block,
+                publisher = %publisher_url,
+                "Published aggregation outputs to shared publisher"
+            ),
                 Err(e) => warn!(
-                    start_block,
-                    end_block,
-                    error = %e,
-                    "Failed to publish aggregation outputs; continuing"
-                ),
+                start_block,
+                end_block,
+                error = %e,
+                "Failed to publish aggregation outputs; continuing"
+            ),
             }
         }
-        
-        Ok(B256::ZERO) // Placeholder return value since we're not submitting on-chain
+
+        Ok(())
+    }
+
+    async fn relay_aggregation_proof(
+        &self,
+        completed_agg_proof: &OPSuccinctRequest,
+    ) -> Result<B256> {
+        // Get the output at the end block of the last completed aggregation proof.
+        let output = self
+            .driver_config
+            .fetcher
+            .get_l2_output_at_block(completed_agg_proof.end_block as u64)
+            .await?;
+
+        // If the DisputeGameFactory address is set, use it to create a new validity dispute game
+        // that will resolve with the proof. Note: In the DGF setting, the proof immediately
+        // resolves the game. Otherwise, propose the L2 output.
+        let receipt = if self.contract_config.dgf_address != Address::ZERO {
+            // Validity game type: https://github.com/ethereum-optimism/optimism/blob/develop/packages/contracts-bedrock/src/dispute/lib/Types.sol#L64.
+            const OP_SUCCINCT_VALIDITY_DISPUTE_GAME_TYPE: u32 = 6;
+
+            // Get the initialization bond for the validity dispute game.
+            let init_bond = self
+                .contract_config
+                .dgf_contract
+                .initBonds(OP_SUCCINCT_VALIDITY_DISPUTE_GAME_TYPE)
+                .call()
+                .await?;
+
+            let transaction_request = self
+                .contract_config
+                .l2oo_contract
+                .dgfProposeL2Output(
+                    self.requester_config.op_succinct_config_name_hash,
+                    output.output_root,
+                    U256::from(completed_agg_proof.end_block),
+                    U256::from(completed_agg_proof.checkpointed_l1_block_number.unwrap()),
+                    completed_agg_proof.proof.clone().unwrap().into(),
+                    self.driver_config.signer.address(),
+                )
+                .value(init_bond)
+                .into_transaction_request();
+
+            self.driver_config
+                .signer
+                .send_transaction_request(
+                    self.driver_config.fetcher.as_ref().rpc_config.l1_rpc.clone(),
+                    transaction_request,
+                )
+                .await
+                .map_err(|e| anyhow!("Failed to relay aggregation proof onchain. end_block: {}, checkpointed_l1_block_number: {}, error: {}", completed_agg_proof.end_block, completed_agg_proof.checkpointed_l1_block_number.unwrap(), e))?
+        } else {
+            // Propose the L2 output to the L2OutputOracle directly.
+            let transaction_request = self
+                .contract_config
+                .l2oo_contract
+                .proposeL2Output(
+                    self.requester_config.op_succinct_config_name_hash,
+                    output.output_root,
+                    U256::from(completed_agg_proof.end_block),
+                    U256::from(completed_agg_proof.checkpointed_l1_block_number.unwrap()),
+                    completed_agg_proof.proof.clone().unwrap().into(),
+                    self.driver_config.signer.address(),
+                )
+                .into_transaction_request();
+
+            self.driver_config
+                .signer
+                .send_transaction_request(
+                    self.driver_config.fetcher.as_ref().rpc_config.l1_rpc.clone(),
+                    transaction_request,
+                )
+                .await?
+        };
+
+        // If the transaction reverted, log the error.
+        if !receipt.status() {
+            return Err(anyhow!("Transaction reverted: {:?}", receipt));
+        }
+
+        Ok(receipt.transaction_hash)
     }
 
     /// Validate the requester config matches the contract.

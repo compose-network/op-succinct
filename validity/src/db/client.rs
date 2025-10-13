@@ -818,4 +818,26 @@ impl DriverDBClient {
             row.mailbox_root,
         )))
     }
+
+    /// Get the latest proposed block number from the database.
+    /// 
+    /// SSV: Query the database for the latest aggregation proof that has been relayed (status = Relayed).
+    /// This allows us to track the latest proposed block number via the shared publisher.
+    pub async fn get_latest_relayed_block_number(&self) -> Result<Option<i64>, Error> {
+        let latest_relayed = sqlx::query!(
+            r#"
+            SELECT end_block
+            FROM requests
+            WHERE req_type = $1 AND status = $2
+            ORDER BY end_block DESC
+            LIMIT 1
+            "#,
+            RequestType::Aggregation as i16,
+            RequestStatus::Relayed as i16,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(latest_relayed.map(|record| record.end_block))
+    }
 }

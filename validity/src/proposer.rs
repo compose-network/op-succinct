@@ -25,10 +25,9 @@ use tracing::{debug, info, warn};
 
 use crate::{
     db::{DriverDBClient, OPSuccinctRequest, RequestMode, RequestStatus, RequestType},
-    find_gaps, get_ranges_to_prove, CommitmentConfig,
+    find_gaps, get_latest_proposed_block_number, get_ranges_to_prove, CommitmentConfig,
     ContractConfig, OPSuccinctProofRequester, ProgramConfig, RequesterConfig, ValidityGauge,
 };
-// LEGACY: get_latest_proposed_block_number - replaced with db_client.get_latest_relayed_block_number()
 use crate::publisher::{build_aggregation_outputs, submit_to_publisher};
 use op_succinct_client_utils::boot::MailboxInfoStruct;
 
@@ -257,13 +256,21 @@ where
     #[tracing::instrument(name = "proposer.add_new_ranges", skip(self))]
     pub async fn add_new_ranges(&self) -> Result<()> {
         // SSV: Get the latest proposed block number from the database (latest relayed aggregation proof).
-        let mut latest_proposed_block_number = self.driver_config.driver_db_client
+        // Fallback to querying the smart contract if no relayed block found.
+        let mut latest_proposed_block_number = match self.driver_config.driver_db_client
             .get_latest_relayed_block_number()
             .await?
-            .unwrap_or(0);
+        {
+            Some(block) => block as u64,
+            None => get_latest_proposed_block_number(
+                self.contract_config.l2oo_address,
+                self.driver_config.fetcher.as_ref(),
+            )
+            .await?,
+        };
 
         // Enforce minimum start block if configured.
-        latest_proposed_block_number = latest_proposed_block_number.max(self.requester_config.min_l2_block as i64);
+        latest_proposed_block_number = latest_proposed_block_number.max(self.requester_config.min_l2_block);
 
         let finalized_block_number = match self
             .proof_requester
@@ -543,10 +550,18 @@ where
         // Check if there's an Aggregation proof with the same start block AND range verification
         // key commitment AND aggregation vkey. If so, return.
         // SSV: Get the latest proposed block number from the database (latest relayed aggregation proof).
-        let mut latest_proposed_block_number = self.driver_config.driver_db_client
+        // Fallback to querying the smart contract if no relayed block found.
+        let mut latest_proposed_block_number = match self.driver_config.driver_db_client
             .get_latest_relayed_block_number()
             .await?
-            .unwrap_or(0);
+        {
+            Some(block) => block,
+            None => get_latest_proposed_block_number(
+                self.contract_config.l2oo_address,
+                self.driver_config.fetcher.as_ref(),
+            )
+            .await? as i64,
+        };
 
         // Apply minimum L2 block for aggregation flows
         latest_proposed_block_number = latest_proposed_block_number
@@ -797,14 +812,22 @@ where
     /// block.
     async fn get_next_unrequested_proof(&self) -> Result<Option<OPSuccinctRequest>> {
         // SSV: Get the latest proposed block number from the database (latest relayed aggregation proof).
-        let mut latest_proposed_block_number = self.driver_config.driver_db_client
+        // Fallback to querying the smart contract if no relayed block found.
+        let mut latest_proposed_block_number = match self.driver_config.driver_db_client
             .get_latest_relayed_block_number()
             .await?
-            .unwrap_or(0);
+        {
+            Some(block) => block as u64,
+            None => get_latest_proposed_block_number(
+                self.contract_config.l2oo_address,
+                self.driver_config.fetcher.as_ref(),
+            )
+            .await?,
+        };
 
         // Respect minimum start block filter when selecting next proof to request.
         latest_proposed_block_number = latest_proposed_block_number
-            .max(self.requester_config.min_l2_block as i64);
+            .max(self.requester_config.min_l2_block);
 
         // If aggregation is enabled and allowed by single-shot counter, prefer an unrequested aggregation proof.
         let consider_agg = self.requester_config.enable_aggregation
@@ -1005,10 +1028,18 @@ where
     #[tracing::instrument(name = "proposer.submit_agg_proofs", skip(self))]
     async fn submit_agg_proofs(&self) -> Result<()> {
         // SSV: Get the latest proposed block number from the database (latest relayed aggregation proof).
-        let mut latest_proposed_block_number = self.driver_config.driver_db_client
+        // Fallback to querying the smart contract if no relayed block found.
+        let mut latest_proposed_block_number = match self.driver_config.driver_db_client
             .get_latest_relayed_block_number()
             .await?
-            .unwrap_or(0) as u64;
+        {
+            Some(block) => block as u64,
+            None => get_latest_proposed_block_number(
+                self.contract_config.l2oo_address,
+                self.driver_config.fetcher.as_ref(),
+            )
+            .await?,
+        };
 
         // Respect minimum L2 block for aggregation flows
         latest_proposed_block_number = latest_proposed_block_number
@@ -1491,10 +1522,18 @@ where
     /// Fetch and log the proposer metrics.
     async fn log_proposer_metrics(&self) -> Result<()> {
         // SSV: Get the latest proposed block number from the database (latest relayed aggregation proof).
-        let latest_proposed_block_number = self.driver_config.driver_db_client
+        // Fallback to querying the smart contract if no relayed block found.
+        let latest_proposed_block_number = match self.driver_config.driver_db_client
             .get_latest_relayed_block_number()
             .await?
-            .unwrap_or(0) as u64;
+        {
+            Some(block) => block as u64,
+            None => get_latest_proposed_block_number(
+                self.contract_config.l2oo_address,
+                self.driver_config.fetcher.as_ref(),
+            )
+            .await?,
+        };
 
         // Get all completed range proofs from the database.
         // Apply min block for metrics to reflect the active aggregation start

@@ -173,7 +173,7 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         agg_gas_limit: get_env_var("AGG_GAS_LIMIT", Some(1_000_000_000_000))?,         // 1 trillion
         min_l2_block: 521500, // get_env_var("MIN_L2_BLOCK", Some(0))?,
         enable_aggregation: true, // get_env_var("ENABLE_AGGREGATION", Some(true))?,
-        single_shot: true, // get_env_var("SINGLE_SHOT", Some(false))?,
+        single_shot: false, // get_env_var("SINGLE_SHOT", Some(false))?,
         // Optional: HTTP endpoint for the shared publisher service.
         // Example: http://localhost:8081/v1/proofs/op-succinct
         publisher_url: env::var("SHARED_PUBLISHER_URL").ok().and_then(|s| Url::parse(&s).ok()),

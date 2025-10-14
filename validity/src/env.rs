@@ -115,10 +115,12 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
     let loop_interval = get_env_var("LOOP_INTERVAL", Some(DEFAULT_LOOP_INTERVAL))?;
 
     let mut mock = false;
+    let mut enable_aggregation = true;
     let l2_rpc: String = get_env_var("L2_RPC", None)?;
 
     if l2_rpc == "http://optimism-stack-2-geth:8545" {
         mock = true;
+        enable_aggregation = false
     }
 
 
@@ -152,7 +154,7 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert
         range_proof_interval: 300,
         submission_interval: 300,
-        mock: true, // TODO: WIP
+        mock: mock, // TODO: WIP
 
         max_concurrent_witness_gen: get_env_var("MAX_CONCURRENT_WITNESS_GEN", Some(1))?,
         max_concurrent_proof_requests: get_env_var("MAX_CONCURRENT_PROOF_REQUESTS", Some(1))?,
@@ -172,7 +174,7 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         agg_cycle_limit: get_env_var("AGG_CYCLE_LIMIT", Some(1_000_000_000_000))?,     // 1 trillion
         agg_gas_limit: get_env_var("AGG_GAS_LIMIT", Some(1_000_000_000_000))?,         // 1 trillion
         min_l2_block: 600000, // get_env_var("MIN_L2_BLOCK", Some(0))?,
-        enable_aggregation: true, // get_env_var("ENABLE_AGGREGATION", Some(true))?,
+        enable_aggregation: enable_aggregation, // get_env_var("ENABLE_AGGREGATION", Some(true))?,
         single_shot: false, // get_env_var("SINGLE_SHOT", Some(false))?,
         // Optional: HTTP endpoint for the shared publisher service.
         // Example: http://localhost:8081/v1/proofs/op-succinct

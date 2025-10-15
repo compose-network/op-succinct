@@ -152,8 +152,8 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         dgf_address: get_env_var("DGF_ADDRESS", Some(Address::ZERO))?,
 
         // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert
-        range_proof_interval: 300,
-        submission_interval: 300,
+        range_proof_interval: 1800,
+        submission_interval: 1800,
         mock: mock, // TODO: WIP
 
         max_concurrent_witness_gen: get_env_var("MAX_CONCURRENT_WITNESS_GEN", Some(1))?,
@@ -173,7 +173,7 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         range_gas_limit: get_env_var("RANGE_GAS_LIMIT", Some(1_000_000_000_000))?,     // 1 trillion
         agg_cycle_limit: get_env_var("AGG_CYCLE_LIMIT", Some(1_000_000_000_000))?,     // 1 trillion
         agg_gas_limit: get_env_var("AGG_GAS_LIMIT", Some(1_000_000_000_000))?,         // 1 trillion
-        min_l2_block: 600000, // get_env_var("MIN_L2_BLOCK", Some(0))?,
+        min_l2_block: 618000, // get_env_var("MIN_L2_BLOCK", Some(0))?,
         enable_aggregation: enable_aggregation, // get_env_var("ENABLE_AGGREGATION", Some(true))?,
         single_shot: false, // get_env_var("SINGLE_SHOT", Some(false))?,
         // Optional: HTTP endpoint for the shared publisher service.

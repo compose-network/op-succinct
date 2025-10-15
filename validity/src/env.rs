@@ -152,8 +152,8 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         dgf_address: get_env_var("DGF_ADDRESS", Some(Address::ZERO))?,
 
         // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert
-        range_proof_interval: 300,
-        submission_interval: 300,
+        range_proof_interval: 1800,
+        submission_interval: 1800,
         mock: mock, // TODO: WIP
 
         max_concurrent_witness_gen: get_env_var("MAX_CONCURRENT_WITNESS_GEN", Some(1))?,

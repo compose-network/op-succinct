@@ -21,7 +21,6 @@ pub struct EnvironmentConfig {
     pub dgf_address: Address,
     /// Whether to use the built-in hardcoded L2OO address instead of reading from env.
     /// This can be used (set to true) when you want only one rollup to request proofs to the SP1 network (to save funds on tests)
-    pub use_hardcoded_l2oo: bool,
     pub range_proof_interval: u64,
     pub max_concurrent_witness_gen: u64,
     pub max_concurrent_proof_requests: u64,
@@ -114,29 +113,6 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
     // Optional loop interval
     let loop_interval = get_env_var("LOOP_INTERVAL", Some(DEFAULT_LOOP_INTERVAL))?;
 
-    let mut mock = false;
-    let mut enable_aggregation = true;
-    let l2_rpc: String = get_env_var("L2_RPC", None)?;
-
-    if l2_rpc == "http://optimism-stack-2-geth:8545" {
-        mock = true;
-        enable_aggregation = false
-    }
-
-
-    // L2OO address source can be configured via USE_HARDCODED_L2OO.
-    // If true, use the known default; otherwise read from env L2OO_ADDRESS.
-    let mut use_hardcoded_l2oo: bool = get_env_var("USE_HARDCODED_L2OO", Some(false))?;
-    use_hardcoded_l2oo = true;
-    let l2oo_address: Address = if use_hardcoded_l2oo {
-        "0x7b1a1AD51d4125AbE05c318544Cee585B26D6966"
-            .parse::<Address>()
-            .expect("Invalid address format")
-    } else {
-        get_env_var("L2OO_ADDRESS", Some(Address::ZERO))?
-    };
-
-    println!("Mock mode {}", mock);
 
     let config = EnvironmentConfig {
         metrics_port: get_env_var("METRICS_PORT", Some(8080))?,
@@ -147,19 +123,14 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         range_proof_strategy,
         agg_proof_strategy,
         agg_proof_mode,
-        l2oo_address,
-        use_hardcoded_l2oo,
+        l2oo_address: get_env_var("L2OO_ADDRESS", Some(Address::ZERO))?,
         dgf_address: get_env_var("DGF_ADDRESS", Some(Address::ZERO))?,
 
-        // range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, // TODO: revert
-        range_proof_interval: 640,
-        submission_interval: 640,
-        mock: false, // TODO: WIP
-
+        range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?, 
         max_concurrent_witness_gen: get_env_var("MAX_CONCURRENT_WITNESS_GEN", Some(1))?,
         max_concurrent_proof_requests: get_env_var("MAX_CONCURRENT_PROOF_REQUESTS", Some(1))?,
-        // submission_interval: get_env_var("SUBMISSION_INTERVAL", Some(1800))?, // TODO: revert
-        // mock: get_env_var("OP_SUCCINCT_MOCK", Some(false))?, // TODO: revert
+        submission_interval: get_env_var("SUBMISSION_INTERVAL", Some(1800))?, 
+        mock: get_env_var("OP_SUCCINCT_MOCK", Some(false))?, 
         loop_interval,
         safe_db_fallback: get_env_var("SAFE_DB_FALLBACK", Some(false))?,
         op_succinct_config_name: get_env_var(
@@ -173,9 +144,9 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         range_gas_limit: get_env_var("RANGE_GAS_LIMIT", Some(1_000_000_000_000))?,     // 1 trillion
         agg_cycle_limit: get_env_var("AGG_CYCLE_LIMIT", Some(1_000_000_000_000))?,     // 1 trillion
         agg_gas_limit: get_env_var("AGG_GAS_LIMIT", Some(1_000_000_000_000))?,         // 1 trillion
-        min_l2_block: 618000, // get_env_var("MIN_L2_BLOCK", Some(0))?,
-        enable_aggregation: true, // get_env_var("ENABLE_AGGREGATION", Some(true))?,
-        single_shot: false, // get_env_var("SINGLE_SHOT", Some(false))?,
+        min_l2_block: get_env_var("MIN_L2_BLOCK", Some(0))?,
+        enable_aggregation: get_env_var("ENABLE_AGGREGATION", Some(true))?,
+        single_shot: get_env_var("SINGLE_SHOT", Some(false))?,
         // Optional: HTTP endpoint for the shared publisher service.
         // Example: http://localhost:8081/v1/proofs/op-succinct
         publisher_url: env::var("SHARED_PUBLISHER_URL").ok().and_then(|s| Url::parse(&s).ok()),

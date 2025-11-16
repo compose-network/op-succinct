@@ -152,6 +152,10 @@ fn  sanitize_rollup_config_response<T>(response: &mut Value) -> Result<T> where 
         // Remove "minBaseFee" occurrences
         strip_key_iterative(&mut result, "minBaseFee");
 
+        // TODO: REMOVE ONCE FIXED — drop daFootprintGasScalar only until kona RollupConfig supports Jovian
+        // Remove Jovian DA field not present in older kona RollupConfig
+        strip_key_iterative(&mut result, "daFootprintGasScalar");
+
         // Deserialize into the requested type
         serde_json::from_value::<T>(result).with_context(|| format!("Failed to deserialize JSON-RPC `result` into {}", std::any::type_name::<T>()))
     } else {

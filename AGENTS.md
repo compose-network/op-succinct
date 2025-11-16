@@ -30,7 +30,7 @@ Core pieces:
   - Shared types (e.g., `BootInfoStruct`, `AggregationInputs`, `AggregationOutputs`) that must match:
     - the Publisher’s proof pipeline,
     - the superblock prover’s public‑value encoding,
-    - Solidity structs in the settlement contracts.
+    - Solidity structs in the L1 contracts in this repo (see `contracts/src/lib/Types.sol` and friends).
 
 
 ## Range Program (per‑chain L2 validity)
@@ -98,7 +98,7 @@ Key file: `programs/aggregation/src/main.rs`
 If you modify `BootInfoStruct` or `AggregationOutputs` here, you must also:
 
 - Update the bindings in the Publisher (`x/superblock/proofs/*`) and superblock prover,
-- Update Solidity structs / encoders in the L1 contracts (`ComposeL2OutputOracle`, dispute game factory binding),
+- Update Solidity structs / encoders in the L1 contracts that consume these outputs (e.g., `OPSuccinctL2OutputOracle`, `OPSuccinctFaultDisputeGame`, and their shared `Types.AggregationOutputs`),
 - Re‑deploy and re‑configure the settlement layer before using the new proofs in stage/prod.
 
 
@@ -136,4 +136,3 @@ You are in the right place if you are:
 - Investigating proof failures that clearly originate from the zkVM side rather than L1 contracts.
 
 Keep this document updated as the range/aggregation semantics evolve so future agents can orient quickly without re‑deriving the architecture from code. 
-

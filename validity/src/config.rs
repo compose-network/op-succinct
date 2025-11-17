@@ -52,7 +52,7 @@ pub struct RequesterConfig {
     pub op_succinct_config_name_hash: B256,
     pub mock: bool,
 
-    /// Whether to fallback to timestamp-based L1 head estimation even though SafeDB is not
+    /// Whether to fall back to timestamp-based L1 head estimation even though SafeDB is not
     /// activated for op-node.
     pub safe_db_fallback: bool,
 
@@ -89,4 +89,16 @@ pub struct RequesterConfig {
 
     /// How long to wait before cancelling a proof request that hasn't been assigned.
     pub auction_timeout: u64,
+    /// Minimum L2 block number to consider when creating or requesting proofs.
+    /// Requests starting before this block will be ignored. Use 0 to disable.
+    pub min_l2_block: u64,
+
+    /// Whether aggregation proofs are enabled. When false, proposer will only
+    /// create/request range proofs and skip aggregation-related flows.
+    pub enable_aggregation: bool,
+
+    /// If true, the proposer will request at most one Range proof
+    /// and at most one Aggregation proof from the SP1 network for
+    /// the lifetime of the process.
+    pub single_shot: bool,
 }

@@ -11,9 +11,15 @@ repository.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
 rkyv.workspace = true
+kzg-rs.workspace = true
+
+alloy-primitives.workspace = true
 
 # kona
 kona-proof.workspace = true
+kona-protocol.workspace = true
+kona-executor.workspace = true
+alloy-consensus.workspace = true
 
 # sp1
 sp1-zkvm.workspace = true

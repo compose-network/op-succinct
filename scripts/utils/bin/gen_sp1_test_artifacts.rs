@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
 
     // Now, write the successful ranges to
     // /sp1-testing-suite-artifacts/op-succinct-chain-{l2_chain_id}-{start}-{end} The folders
-    // should each have the RANGE_ELF_EMBEDDED/CELESTIA_RANGE_ELF_EMBEDDED as program.bin, and the
+    // should each have the RANGE_ELF_EMBEDDED as program.bin, and the
     // serialized stdin should be written to stdin.bin.
     let cargo_metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
     let root_dir = PathBuf::from(cargo_metadata.workspace_root).join("sp1-testing-suite-artifacts");

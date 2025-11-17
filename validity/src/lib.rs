@@ -6,6 +6,7 @@ mod prom;
 mod proof_requester;
 mod proposer;
 mod types;
+mod publisher;
 mod utils;
 
 pub use config::*;
@@ -17,3 +18,4 @@ pub use proof_requester::*;
 pub use proposer::*;
 pub use types::*;
 pub use utils::*;
+pub use publisher::*;

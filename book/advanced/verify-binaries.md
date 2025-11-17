@@ -41,12 +41,6 @@ cd programs/range/ethereum
 cargo prove build --output-directory ../../../elf --elf-name range-elf-bump --docker --tag v5.2.2
 cargo prove build --output-directory ../../../elf --elf-name range-elf-embedded --docker --tag v5.2.2 --features embedded
 
-cd ../celestia
-cargo prove build --output-directory ../../../elf --elf-name celestia-range-elf-embedded --docker --tag v5.2.2 --features embedded
-
-cd ../eigenda
-cargo prove build --output-directory ../../../elf --elf-name eigenda-range-elf-embedded --docker --tag v5.2.2 --features embedded
-
 # Build the aggregation-elf
 cd ../../aggregation
 cargo prove build --output-directory ../../elf --elf-name aggregation-elf --docker --tag v5.2.2

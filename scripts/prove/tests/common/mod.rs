@@ -1,7 +1,8 @@
 use reqwest::Client;
 use serde_json::json;
+pub mod color_logs;
 
-/// Posts the provided message on the provided PR on Github.
+/// Posts the provided message on the provided PR on GitHub.
 pub async fn post_to_github_pr(
     owner: &str,
     repo: &str,

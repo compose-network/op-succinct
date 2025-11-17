@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE requests SET \n                mailbox_inbox_chains = $1,\n                mailbox_outbox_chains = $2,\n                mailbox_inbox_roots = $3,\n                mailbox_outbox_roots = $4,\n                mailbox_root = $5,\n                updated_at = NOW() \n            WHERE id = $6\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "ByteaArray",
+        "ByteaArray",
+        "ByteaArray",
+        "ByteaArray",
+        "Bytea",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4cd14b7c9e3b3aa16f3988a704eebca1314a7d865b06ab74ca225f7a7aa07415"
+}

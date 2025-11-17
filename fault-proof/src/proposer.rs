@@ -700,6 +700,8 @@ where
         tracing::info!("Generating Range Proof");
         let (range_proof, total_instruction_cycles, total_sp1_gas) = if self.config.mock_mode {
             tracing::info!("Using mock mode for range proof generation");
+            // let mut stdout_bridge = GuestLogBridge::new(Level::INFO, "sp1::stdout");
+            // let mut stderr_bridge = GuestLogBridge::new(Level::WARN, "sp1::stderr");
             let (public_values, report) = self
                 .prover
                 .network_prover
@@ -786,11 +788,15 @@ where
         tracing::info!("Generating Agg Proof");
         let agg_proof = if self.config.mock_mode {
             tracing::info!("Using mock mode for aggregation proof generation");
+            // let mut stdout_bridge = GuestLogBridge::new(Level::INFO, "sp1::stdout");
+            // let mut stderr_bridge = GuestLogBridge::new(Level::WARN, "sp1::stderr");
             let (public_values, _) = self
                 .prover
                 .network_prover
                 .execute(AGGREGATION_ELF, &sp1_stdin)
                 .deferred_proof_verification(false)
+                // .stdout(&mut stdout_bridge)
+                // .stderr(&mut stderr_bridge)
                 .run()?;
 
             // Create a mock aggregation proof with the public values.

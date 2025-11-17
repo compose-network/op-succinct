@@ -1,6 +1,7 @@
 use std::{
     cmp::{max, min},
     collections::HashSet,
+    time::Duration,
 };
 
 use alloy_eips::BlockId;
@@ -83,6 +84,19 @@ pub async fn get_rolling_block_range<H: OPSuccinctHost>(
         .expect("Failed to get finalized L2 block number");
 
     Ok((l2_end_block - range, l2_end_block))
+}
+
+/// Get a fixed recent (less than the provided interval) block range.
+pub async fn get_recent_block_range(
+    data_fetcher: &OPSuccinctDataFetcher,
+    interval: Duration,
+    range: u64,
+) -> Result<(u64, u64)> {
+    let header = data_fetcher.get_l2_header(BlockId::finalized()).await?;
+    let start_timestamp = header.timestamp - (header.timestamp % interval.as_secs());
+    let (_, l2_start_block) = data_fetcher.find_l2_block_by_timestamp(start_timestamp).await?;
+
+    Ok((l2_start_block, l2_start_block + range))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

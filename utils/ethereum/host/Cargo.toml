@@ -27,3 +27,4 @@ alloy-primitives.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 rkyv.workspace = true
+tracing.workspace = true

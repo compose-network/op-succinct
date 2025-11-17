@@ -1,30 +1,38 @@
 use std::sync::Arc;
 
+use tracing_subscriber;
+
 use anyhow::Result;
 use common::post_to_github_pr;
 use op_succinct_host_utils::{
-    block_range::get_rolling_block_range,
+    block_range::get_recent_block_range,
     fetcher::OPSuccinctDataFetcher,
     host::OPSuccinctHost,
     stats::{ExecutionStats, MarkdownExecutionStats},
     witness_generation::WitnessGenerator,
 };
 use op_succinct_proof_utils::initialize_host;
-use op_succinct_prove::{execute_multi, DEFAULT_RANGE};
+use op_succinct_prove::{execute_multi, ONE_HOUR};
 
 mod common;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn execute_batch() -> Result<()> {
+    // Initialize logger once
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_test_writer() // ensures compatibility with `cargo test`
+        .try_init();
+
     dotenv::dotenv()?;
 
     let data_fetcher = OPSuccinctDataFetcher::new_with_rollup_config().await?;
 
-    let host = initialize_host(Arc::new(data_fetcher.clone()));
-
-    // Take the latest blocks
+    // Take the latest recent blocks over the last hour.
     let (l2_start_block, l2_end_block) =
-        get_rolling_block_range(host.as_ref(), &data_fetcher, DEFAULT_RANGE).await?;
+        get_recent_block_range(&data_fetcher, ONE_HOUR, 1).await?;
+
+    let host = initialize_host(Arc::new(data_fetcher.clone()));
 
     let host_args = host.fetch(l2_start_block, l2_end_block, None, false).await?;
 

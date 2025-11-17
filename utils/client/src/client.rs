@@ -10,6 +10,7 @@ use kona_proof::{errors::OracleProviderError, HintType};
 use kona_protocol::L2BlockInfo;
 use op_alloy_consensus::{OpBlock, OpTxEnvelope, OpTxType};
 use std::fmt::Debug;
+
 use tracing::{error, info, warn};
 
 /// Fetches the safe head hash of the L2 chain based on the agreed upon L2 output root in the
@@ -65,6 +66,7 @@ where
         if let Some(tb) = target {
             if tip_cursor.l2_safe_head.block_info.number >= tb {
                 info!(target: "client", "Derivation complete, reached L2 safe head.");
+
                 return Ok((tip_cursor.l2_safe_head, tip_cursor.l2_safe_head_output_root));
             }
         }
@@ -144,6 +146,8 @@ where
         };
         #[cfg(target_os = "zkvm")]
         println!("cycle-tracker-report-end: block-execution");
+
+
 
         // Construct the block.
         let block = OpBlock {

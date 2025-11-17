@@ -1,12 +1,10 @@
 use alloy_primitives::B256;
 use anyhow::Result;
 use async_trait::async_trait;
-use hana_host::celestia::CelestiaChainHost;
-use hokulea_host_bin::cfg::SingleChainHostWithEigenDA;
 use kona_host::single::{SingleChainHost, SingleChainHostError};
 use kona_preimage::{BidirectionalChannel, Channel};
 use tokio::task::JoinHandle;
-
+use op_succinct_client_utils::witness::MailboxStore;
 use crate::{fetcher::OPSuccinctDataFetcher, witness_generation::WitnessGenerator};
 
 #[async_trait]
@@ -34,33 +32,6 @@ impl PreimageServerStarter for SingleChainHost {
     }
 }
 
-#[async_trait]
-impl PreimageServerStarter for CelestiaChainHost {
-    async fn start_server<C>(
-        &self,
-        hint: C,
-        preimage: C,
-    ) -> Result<JoinHandle<Result<(), SingleChainHostError>>, SingleChainHostError>
-    where
-        C: Channel + Send + Sync + 'static,
-    {
-        self.start_server(hint, preimage).await
-    }
-}
-
-#[async_trait]
-impl PreimageServerStarter for SingleChainHostWithEigenDA {
-    async fn start_server<C>(
-        &self,
-        hint: C,
-        preimage: C,
-    ) -> Result<JoinHandle<Result<(), SingleChainHostError>>, SingleChainHostError>
-    where
-        C: Channel + Send + Sync + 'static,
-    {
-        self.start_server(hint, preimage).await
-    }
-}
 
 #[async_trait]
 pub trait OPSuccinctHost: Send + Sync + 'static {
@@ -97,12 +68,29 @@ pub trait OPSuccinctHost: Send + Sync + 'static {
 
         let server_task = args.start_server(hint.host, preimage.host).await?;
 
-        let witness = self.witness_generator().run(preimage.client, hint.client).await?;
+        let (witness, _) = self.witness_generator().run(preimage.client, hint.client).await?;
         // Unlike the upstream, manually abort the server task, as it will hang if you wait for both
         // tasks to complete.
         server_task.abort();
 
         Ok(witness)
+    }
+
+    async fn run_with_mailbox(
+        &self,
+        args: &Self::Args,
+    ) -> Result<(<Self::WitnessGenerator as WitnessGenerator>::WitnessData, MailboxStore)> {
+        let preimage = BidirectionalChannel::new()?;
+        let hint = BidirectionalChannel::new()?;
+
+        let server_task = args.start_server(hint.host, preimage.host).await?;
+
+        let (witness, mailbox_store) = self.witness_generator().run(preimage.client, hint.client).await?;
+        // Unlike the upstream, manually abort the server task, as it will hang if you wait for both
+        // tasks to complete.
+        server_task.abort();
+
+        Ok((witness, mailbox_store))
     }
 
     /// Get the L1 head hash from the host args.
@@ -112,7 +100,6 @@ pub trait OPSuccinctHost: Send + Sync + 'static {
     /// included in a range proof.
     ///
     /// For ETH DA, this is the finalized L2 block number.
-    /// For Celestia, this is the highest L2 block included in the latest Blobstream commitment.
     ///
     /// The latest proposed block number is assumed to be the highest block number that has been
     /// successfully processed by the host.
@@ -126,7 +113,6 @@ pub trait OPSuccinctHost: Send + Sync + 'static {
     ///
     /// This method is DA-specific:
     /// - For ETH DA: Uses simple offset logic.
-    /// - For Celestia DA: Uses blobstream commitment logic to ensure data availability.
     ///
     /// Parameters:
     /// - `fetcher`: The data fetcher for accessing blockchain data.

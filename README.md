@@ -1,26 +1,31 @@
-# op-succinct
+# My op-succinct
 
-OP Succinct is the production-grade proving engine for the OP Stack, powered by SP1.
+To compile the range program:
 
-With support for both validity proofs, with OP Succinct, and ZK fault proofs, with OP Succinct Lite, OP Succinct enables seamless upgrades for OP Stack rollups to a type-1 zkEVM rollup.
+```bash
+cd programs/range/ethereum
+cargo prove build
+```
 
-**[Docs](https://succinctlabs.github.io/op-succinct)**
+To compile the aggregation program:
 
-## Repository Overview
+```bash
+cd programs/aggregation
+cargo prove build
+```
 
-> [!CAUTION]
-> `main` is the development branch and may contain unstable code.
-> For production use, please use the [latest release](https://github.com/succinctlabs/op-succinct/releases).
+To compile both programs at once from the workspace root:
 
-The repository is organized into the following directories:
+```bash
+cargo prove build -p range -p aggregation
+```
 
-- `book`: The documentation for OP Succinct users and developers.
-- `contracts`: The solidity contracts for posting state roots to L1.
-- `programs`: The programs for proving the execution and derivation of the L2 state transitions and proof aggregation.
-- `validity`: The implementation of the `op-succinct/op-succinct` service.
-- `fault-proof`: The implementation of the `op-succinct/fault-proof` service.
-- `scripts`: Scripts for testing and deploying OP Succinct.
-- `utils`: Shared utilities for the host, client, and proposer.
+To run my test:
+
+```bash
+cd scripts/prove/tests
+L2_START_BLOCK=517970 L2_RANGE=1 cargo test -p op-succinct-prove --test range_ethereum -- --nocapture
+```
 
 ## Development
 
@@ -44,9 +49,13 @@ mdbook serve --open
 
 To configure or change the OP Succinct codebase, please refer to the [OP Succinct Book](https://succinctlabs.github.io/op-succinct).
 
-## Acknowledgments
+Logging for the range programs now uses `tracing`. Guest log lines are bridged back into the host logger under the
+`sp1::stdout`/`sp1::stderr` targets, so configure `RUST_LOG` accordingly. Rebuild the zkVM binary with the
+`tracing-subscriber` feature so the guest installs its subscriber, then run the harness:
 
-This repo would not exist without:
-* [OP Stack](https://docs.optimism.io/stack/getting-started): Modular software components for building L2 blockchains.
-* [Kona](https://github.com/anton-rs/kona/tree/main): A portable implementation of the OP Stack rollup state transition, namely the derivation pipeline and the block execution logic.
-* [SP1](https://github.com/succinctlabs/sp1): The fastest, most feature-complete zkVM for developers.
+```bash
+cargo prove build -p range --features tracing-subscriber
+RUST_LOG=info,sp1::stdout=info cargo test -p op-succinct-prove --test range_ethereum -- --nocapture
+```
+
+Ask me for the `.env` file if needed.

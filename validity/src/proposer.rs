@@ -1065,16 +1065,15 @@ where
         };
 
         // WIP: Relay the aggregation proof to L1.
-        // let transaction_hash = match self.relay_aggregation_proof(&completed_agg_proof).await {
-        //     Ok(transaction_hash) => transaction_hash,
-        //     Err(e) => {
-        //         ValidityGauge::RelayAggProofErrorCount.increment(1.0);
-        //         return Err(e);
-        //     }
-        // };
-        //
-        let transaction_hash = B256::ZERO;
-        // info!("Relayed aggregation proof. Transaction hash: {:?}", transaction_hash);
+        let transaction_hash = match self.relay_aggregation_proof(&completed_agg_proof).await {
+            Ok(transaction_hash) => transaction_hash,
+            Err(e) => {
+                ValidityGauge::RelayAggProofErrorCount.increment(1.0);
+                return Err(e);
+            }
+        };
+        
+        info!("Relayed aggregation proof to L1. Transaction hash: {:?}", transaction_hash);
 
 
         // Relay the aggregation proof to SP.

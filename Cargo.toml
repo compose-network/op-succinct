@@ -22,7 +22,7 @@ edition = "2021"
 authors = ["ratankaliani", "zachobront", "fakedev9999", "yuwen01"]
 homepage = "https://succinctlabs.github.io/op-succinct/"
 repository = "https://github.com/succinctlabs/op-succinct"
-version = "3.3.5"
+version = "3.4.0-rc.1"
 
 [workspace.dependencies]
 # general
@@ -73,23 +73,23 @@ strum_macros = "0.27.1"
 tempfile = "3.10.1"
 
 # kona
-kona-mpt = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7" }
-kona-derive = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7", default-features = false }
-kona-driver = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7" }
-kona-preimage = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7", features = [
+kona-mpt = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2" }
+kona-derive = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2", default-features = false }
+kona-driver = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2" }
+kona-preimage = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2", features = [
     "rkyv",
     "serde",
 ] }
-kona-executor = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7" }
-kona-proof = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7" }
+kona-executor = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2" }
+kona-proof = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2" }
 
-kona-client = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7" }
-kona-host = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7" }
-kona-providers-alloy = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7" }
-kona-rpc = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7", default-features = false }
-kona-protocol = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7", default-features = false }
-kona-registry = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7", default-features = false }
-kona-genesis = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.1.7", default-features = false }
+kona-client = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2" }
+kona-host = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2" }
+kona-providers-alloy = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2" }
+kona-rpc = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2", default-features = false }
+kona-protocol = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2", default-features = false }
+kona-registry = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2", default-features = false }
+kona-genesis = { git = "https://github.com/op-rs/kona", tag = "kona-client/v1.2.2", default-features = false }
 
 # op-succinct
 op-succinct-prove = { path = "scripts/prove" }
@@ -155,14 +155,14 @@ op-alloy-rpc-types-engine = { version = "0.22.0", default-features = false }
 op-alloy-network = { version = "0.22.0", default-features = false }
 
 # Execution
-alloy-evm = { version = "0.23.1", default-features = false }
-alloy-op-evm = { version = "0.23.1", default-features = false }
+alloy-evm = { version = "0.22.6", default-features = false }
+alloy-op-evm = { version = "0.22.6", default-features = false }
 # Use kzg-rs and substrate-bn for the zkVM.
-revm = { version = "31.0.1", default-features = false, features = [
+revm = { version = "30.2.0", default-features = false, features = [
     "bn",
 ] }
-revm-precompile = { version = "29.0.0", default-features = false }
-op-revm = { version = "12.0.0", default-features = false }
+revm-precompile = { version = "28.1.1", default-features = false }
+op-revm = { version = "11.3.0", default-features = false }
 
 # SP1
 sp1-sdk = { version = "=5.2.2", default-features = false, features = ["network"] }

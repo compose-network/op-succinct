@@ -114,63 +114,18 @@ pub struct FeeData {
     pub tx_fee: u128,
 }
 
-/// Strips all occurrences of `key` from the JSON `Value`
-fn strip_key_iterative(root: &mut Value, key: &str) {
-    // We keep a stack of pointers to Values we need to visit.
-    let mut stack: Vec<*mut Value> = vec![root as *mut Value];
+/// Deserializes the JSON-RPC `result` field without mutating or filtering the payload.
+fn sanitize_rollup_config_response<T>(response: &mut Value) -> Result<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let result = response
+        .get("result")
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Malformed JSON-RPC response: missing `result`"))?;
 
-    while let Some(ptr) = stack.pop() {
-        // SAFETY: All pointers come from the unique &mut `root` in this function call.
-        // We never store references elsewhere or use the same pointer twice concurrently,
-        // so there is no aliasing while we mutate.
-        let v = unsafe { &mut *ptr };
-
-        match v {
-            Value::Object(map) => {
-                // Remove the key at this level
-                map.remove(key);
-                // Push children to the stack
-                for child in map.values_mut() {
-                    stack.push(child as *mut Value);
-                }
-            }
-            Value::Array(arr) => {
-                for item in arr {
-                    stack.push(item as *mut Value);
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Sanitizes a JSON-RPC response for RollupConfig by removing all occurrences of "minBaseFee" and deserializing the "result" field.
-/// FIXME: Drop the minBaseFee field removal once op-succinct is aligned with the Jovian hard-fork (and the minBaseFee is present in kona.RollupConfig). I.e. the function should only one line: serde_json::from_value(response["result"].clone()).map_err(Into::into)
-fn  sanitize_rollup_config_response<T>(response: &mut Value) -> Result<T> where T: serde::de::DeserializeOwned {
-
-    // Raise a warning if "minBaseFee" is present anywhere in the response
-    if response.to_string().contains("minBaseFee") {
-        tracing::warn!("Warning: RollupConfig response contains `minBaseFee`. This indicates a (non-supported) Jovian fork. To avoid issues, it will be removed before deserialization but may cause problems later.");
-
-        // Take ownership of "result" (no cloning the whole response)
-        let mut result = response
-            .get_mut("result")
-            .map(|v| std::mem::take(v))
-            .ok_or_else(|| anyhow::anyhow!("Malformed JSON-RPC response: missing `result`"))?;
-
-        // Remove "minBaseFee" occurrences
-        strip_key_iterative(&mut result, "minBaseFee");
-
-        // TODO: REMOVE ONCE FIXED — drop daFootprintGasScalar only until kona RollupConfig supports Jovian
-        // Remove Jovian DA field not present in older kona RollupConfig
-        strip_key_iterative(&mut result, "daFootprintGasScalar");
-
-        // Deserialize into the requested type
-        serde_json::from_value::<T>(result).with_context(|| format!("Failed to deserialize JSON-RPC `result` into {}", std::any::type_name::<T>()))
-    } else {
-        // If "minBaseFee" is not present, proceed as normal
-        serde_json::from_value(response["result"].clone()).map_err(Into::into)
-    }
+    serde_json::from_value(result)
+        .with_context(|| format!("Failed to deserialize JSON-RPC `result` into {}", std::any::type_name::<T>()))
 }
 
 impl OPSuccinctDataFetcher {

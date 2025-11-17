@@ -35,8 +35,23 @@ pub struct EnvironmentConfig {
     pub range_gas_limit: u64,
     pub agg_cycle_limit: u64,
     pub agg_gas_limit: u64,
+    /// Minimum L2 block to start proving from for range proofs (0 disables filtering)
+    pub min_l2_block: u64,
+    /// Enable aggregation proofs (true by default). If false, proposer will
+    /// not create or request aggregation proofs.
+    pub enable_aggregation: bool,
+    /// Request only one range and one aggregation proof total (per run)
+    pub single_shot: bool,
+    /// SSV: 
+    /// Optional HTTP endpoint for SHARED PUBLISHER
+    /// When set, the proposer will POST aggregation outputs to this URL after a successful onchain
+    /// relay.
+    pub publisher_url: Option<Url>,
+    /// The list of prover addresses that are allowed to bid on proof requests.
     pub whitelist: Option<Vec<Address>>,
+    /// The minimum auction period (in seconds).
     pub min_auction_period: u64,
+    /// How long to wait before cancelling a proof request that hasn't been assigned.
     pub auction_timeout: u64,
 }
 
@@ -97,15 +112,11 @@ pub async fn read_proposer_env() -> Result<EnvironmentConfig> {
     )?);
 
     // Parse proof mode
-    let agg_proof_mode =
-        if get_env_var("AGG_PROOF_MODE", Some("plonk".to_string()))?.to_lowercase() == "groth16" {
-            SP1ProofMode::Groth16
-        } else {
-            SP1ProofMode::Plonk
-        };
+    let agg_proof_mode = SP1ProofMode::Compressed;
 
     // Optional loop interval
     let loop_interval = get_env_var("LOOP_INTERVAL", Some(DEFAULT_LOOP_INTERVAL))?;
+
 
     let config = EnvironmentConfig {
         metrics_port: get_env_var("METRICS_PORT", Some(8080))?,
@@ -137,6 +148,14 @@ pub async fn read_proposer_env() -> Result<EnvironmentConfig> {
         range_gas_limit: get_env_var("RANGE_GAS_LIMIT", Some(1_000_000_000_000))?, // 1 trillion
         agg_cycle_limit: get_env_var("AGG_CYCLE_LIMIT", Some(1_000_000_000_000))?, // 1 trillion
         agg_gas_limit: get_env_var("AGG_GAS_LIMIT", Some(1_000_000_000_000))?,   // 1 trillion
+        min_l2_block: get_env_var("MIN_L2_BLOCK", Some(0))?,
+        enable_aggregation: get_env_var("ENABLE_AGGREGATION", Some(true))?,
+        single_shot: get_env_var("SINGLE_SHOT", Some(false))?,
+        // Optional: HTTP endpoint for the shared publisher service.
+        // Example: http://localhost:8081/v1/proofs/op-succinct
+        publisher_url: env::var("SHARED_PUBLISHER_URL")
+            .ok()
+            .and_then(|s| Url::parse(&s).ok()),
         whitelist: parse_whitelist(&get_env_var("WHITELIST", Some("".to_string()))?)?,
         min_auction_period: get_env_var("MIN_AUCTION_PERIOD", Some(1))?,
         auction_timeout: get_env_var("AUCTION_TIMEOUT", Some(60))?, // 1 minute

@@ -133,17 +133,16 @@ pub trait WitnessExecutor {
         let executor = KonaExecutor::new(
             rollup_config.as_ref(),
             l2_provider.clone(),
-            l2_provider,
+            l2_provider.clone(),
             ZkvmOpEvmFactory::new(),
             None,
         );
         let mut driver = Driver::new(cursor, executor, pipeline);
-        // Run the derivation pipeline until we are able to produce the output root of the claimed
-        // L2 block.
 
         // Use custom advance to target with cycle tracking.
         #[cfg(target_os = "zkvm")]
         println!("cycle-tracker-report-start: block-execution-and-derivation");
+        
         let (safe_head, output_root) = advance_to_target(
             &mut driver,
             rollup_config.as_ref(),

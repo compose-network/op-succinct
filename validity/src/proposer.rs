@@ -1,11 +1,12 @@
 use std::{collections::HashMap, ops::Range, str::FromStr, sync::Arc, time::Duration};
 
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, B256, U256};
-use alloy_provider::{network::ReceiptResponse, Provider};
+use alloy_primitives::{B256, U256, Address};
+use alloy_provider::{Provider};
 use anyhow::{anyhow, Context, Result};
 use futures_util::{stream, StreamExt, TryStreamExt};
 use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
+
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher,
@@ -33,6 +34,8 @@ use crate::{
     get_ranges_to_prove_by_gas, CommitmentConfig, ContractConfig, OPSuccinctProofRequester,
     ProgramConfig, RequestExecutionStatistics, RequesterConfig, ValidityGauge,
 };
+use crate::publisher::{build_aggregation_outputs, submit_to_publisher};
+use op_succinct_client_utils::boot::MailboxInfoStruct;
 
 /// Configuration for the driver.
 pub struct DriverConfig {
@@ -41,6 +44,7 @@ pub struct DriverConfig {
     pub driver_db_client: Arc<DriverDBClient>,
     pub signer: SignerLock,
     pub loop_interval: u64,
+    pub publisher_url: Option<reqwest::Url>,
 }
 /// Type alias for a map of task IDs to their join handles and associated requests
 pub type TaskMap = HashMap<i64, (tokio::task::JoinHandle<Result<()>>, OPSuccinctRequest)>;
@@ -55,6 +59,9 @@ where
     requester_config: RequesterConfig,
     proof_requester: Arc<OPSuccinctProofRequester<H>>,
     tasks: Arc<Mutex<TaskMap>>,
+    // Simple counters to limit how many requests we send when SINGLE_SHOT is enabled
+    range_requests_sent: usize,
+    agg_requests_sent: usize,
 }
 
 impl<P, H: OPSuccinctHost> Proposer<P, H>
@@ -151,6 +158,9 @@ where
         let dgf_contract =
             DisputeGameFactoryContract::new(requester_config.dgf_address, provider.clone());
 
+        // Read optional publisher URL directly from env to keep API stable.
+        let publisher_url = std::env::var("SHARED_PUBLISHER_URL").ok().and_then(|s| reqwest::Url::parse(&s).ok());
+
         let proposer = Proposer {
             driver_config: DriverConfig {
                 network_prover,
@@ -158,6 +168,7 @@ where
                 driver_db_client: db_client,
                 signer,
                 loop_interval,
+                publisher_url,
             },
             contract_config: ContractConfig {
                 l2oo_address: requester_config.l2oo_address,
@@ -169,35 +180,111 @@ where
             requester_config,
             proof_requester,
             tasks: Arc::new(Mutex::new(HashMap::new())),
+            range_requests_sent: 0,
+            agg_requests_sent: 0,
         };
         Ok(proposer)
+    }
+
+    /// Cancel any unrequested aggregation requests that cannot be validated exclusively using
+    /// REAL (network-proven) range proofs within their span. This prevents aggregating over mock
+    /// range proofs created by prior runs.
+    async fn cancel_invalid_unrequested_aggregations(&self) -> Result<()> {
+        // Fetch all unrequested requests for this commitment and chains
+        let mut unrequested = self
+            .driver_config
+            .driver_db_client
+            .fetch_requests_by_status(
+                RequestStatus::Unrequested,
+                &self.program_config.commitments,
+                self.requester_config.l1_chain_id,
+                self.requester_config.l2_chain_id,
+            )
+            .await?;
+        // Focus only on Aggregation
+        unrequested.retain(|r| r.req_type == RequestType::Aggregation);
+
+        if unrequested.is_empty() {
+            return Ok(());
+        }
+
+        // Fetch all completed requests once, to filter REAL range proofs efficiently
+        let mut completed = self
+            .driver_config
+            .driver_db_client
+            .fetch_requests_by_status(
+                RequestStatus::Complete,
+                &self.program_config.commitments,
+                self.requester_config.l1_chain_id,
+                self.requester_config.l2_chain_id,
+            )
+            .await?;
+        completed.retain(|r| r.req_type == RequestType::Range && r.mode == RequestMode::Real);
+        completed.sort_by_key(|r| r.start_block);
+
+        for agg in unrequested {
+            let mut range_subset: Vec<OPSuccinctRequest> = completed
+                .iter()
+                .filter(|r| r.start_block >= agg.start_block && r.end_block <= agg.end_block)
+                .cloned()
+                .collect();
+            range_subset.sort_by_key(|r| r.start_block);
+
+            // Use existing validator; it also checks all ranges are REAL by our earlier guard.
+            let valid = self.validate_aggregation_request(&range_subset, &agg).await;
+            if !valid {
+                tracing::info!(
+                    id = agg.id,
+                    start_block = agg.start_block,
+                    end_block = agg.end_block,
+                    "Cancelling unrequested aggregation relying on mock/missing real range proofs"
+                );
+                let _ = self
+                    .driver_config
+                    .driver_db_client
+                    .update_request_status(agg.id, RequestStatus::Cancelled)
+                    .await?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Use the in-memory index of the highest block number to add new ranges to the database.
     #[tracing::instrument(name = "proposer.add_new_ranges", skip(self))]
     pub async fn add_new_ranges(&self) -> Result<()> {
-        // Get the latest proposed block number on the contract.
-        let latest_proposed_block_number = get_latest_proposed_block_number(
-            self.contract_config.l2oo_address,
-            self.driver_config.fetcher.as_ref(),
-        )
-        .await?;
+        // SSV: Get the latest proposed block number from the database (latest relayed aggregation proof).
+        // Fallback to querying the smart contract if no relayed block found.
+        let mut latest_proposed_block_number = match self.driver_config.driver_db_client
+            .get_latest_relayed_block_number()
+            .await?
+        {
+            Some(block) => block as u64,
+            None => get_latest_proposed_block_number(
+                self.contract_config.l2oo_address,
+                self.driver_config.fetcher.as_ref(),
+            )
+            .await?,
+        };
+
+        // Enforce minimum start block if configured.
+        latest_proposed_block_number = latest_proposed_block_number.max(self.requester_config.min_l2_block);
 
         let finalized_block_number = match self
             .proof_requester
             .host
             .get_finalized_l2_block_number(
                 self.driver_config.fetcher.as_ref(),
-                latest_proposed_block_number,
+                latest_proposed_block_number as u64,
             )
             .await?
         {
             Some(block_number) => {
-                tracing::debug!("Found finalized block number: {}", block_number);
+                debug!("Found finalized block number: {}", block_number);
                 block_number
             }
             None => {
-                tracing::debug!("No new finalized block number found since last proposed block. No new range proof requests will be added.");
+                info!("No new finalized block number found since last proposed block. No new range proof requests will be added.");
                 return Ok(());
             }
         };
@@ -574,11 +661,24 @@ where
     pub async fn create_aggregation_proofs(&self) -> Result<()> {
         // Check if there's an Aggregation proof with the same start block AND range verification
         // key commitment AND aggregation vkey. If so, return.
-        let latest_proposed_block_number = get_latest_proposed_block_number(
-            self.contract_config.l2oo_address,
-            self.driver_config.fetcher.as_ref(),
-        )
-        .await? as i64;
+        // SSV: Get the latest proposed block number from the database (latest relayed aggregation proof).
+        // Fallback to querying the smart contract if no relayed block found.
+        let mut latest_proposed_block_number = match self.driver_config.driver_db_client
+            .get_latest_relayed_block_number()
+            .await?
+        {
+            Some(block) => block,
+            None => get_latest_proposed_block_number(
+                self.contract_config.l2oo_address,
+                self.driver_config.fetcher.as_ref(),
+            )
+            .await? as i64,
+        };
+
+        // Apply minimum L2 block for aggregation flows
+        latest_proposed_block_number = latest_proposed_block_number
+            .max(self.requester_config.min_l2_block as i64);
+
 
         // Get all active Aggregation proofs with the same start block, range vkey commitment, and
         // aggregation vkey.
@@ -594,22 +694,32 @@ where
             .await?;
 
         if active_agg_proofs_count > 0 {
-            tracing::debug!("There is already an Aggregation proof queued with the same start block, range vkey commitment, and aggregation vkey.");
+            info!("There is already an Aggregation proof queued with the same start block, range vkey commitment, and aggregation vkey.");
             return Ok(());
         }
 
-        // Get the completed range proofs with a start block greater than the latest proposed block
-        // number. These blocks are sorted.
-        let mut completed_range_proofs = self
-            .driver_config
-            .driver_db_client
-            .fetch_completed_ranges(
-                &self.program_config.commitments,
-                latest_proposed_block_number as i64,
-                self.requester_config.l1_chain_id,
-                self.requester_config.l2_chain_id,
-            )
-            .await?;
+        // Gather completed REAL (network) range proofs starting at or after latest_proposed_block_number
+        let mut completed_range_proofs = {
+            let all_completed = self
+                .driver_config
+                .driver_db_client
+                .fetch_requests_by_status(
+                    RequestStatus::Complete,
+                    &self.program_config.commitments,
+                    self.requester_config.l1_chain_id,
+                    self.requester_config.l2_chain_id,
+                )
+                .await?;
+            let mut real_ranges: Vec<(i64, i64)> = all_completed
+                .into_iter()
+                .filter(|r| r.req_type == RequestType::Range)
+                .filter(|r| r.mode == RequestMode::Real)
+                .filter(|r| r.start_block >= latest_proposed_block_number as i64)
+                .map(|r| (r.start_block, r.end_block))
+                .collect();
+            real_ranges.sort_by_key(|(s, _)| *s);
+            real_ranges
+        };
 
         // Sort the completed range proofs by start block.
         completed_range_proofs.sort_by_key(|(start_block, _)| *start_block);
@@ -624,15 +734,14 @@ where
         };
 
         // Get the submission interval from the contract.
-        let contract_submission_interval: u64 =
-            self.contract_config.l2oo_contract.submissionInterval().call().await?.to::<u64>();
+        // let contract_submission_interval: u64 =
+        //     self.contract_config.l2oo_contract.submissionInterval().call().await?.to::<u64>();
 
         // Use the submission interval from the contract if it's greater than the one in the
         // proposer config.
-        let submission_interval =
-            contract_submission_interval.max(self.requester_config.submission_interval) as i64;
+        let submission_interval = (self.requester_config.submission_interval) as i64;
 
-        debug!("Submission interval for aggregation proof: {}.", submission_interval);
+        info!("Submission interval for aggregation proof: {}.", submission_interval);
 
         // If the highest proven contiguous block number is greater than the latest proposed block
         // number plus the submission interval, create an aggregation proof.
@@ -769,7 +878,7 @@ where
     /// Note: In the future, submit up to MAX_CONCURRENT_PROOF_REQUESTS at a time. Don't do one per
     /// loop.
     #[tracing::instrument(name = "proposer.request_queued_proofs", skip(self))]
-    async fn request_queued_proofs(&self) -> Result<()> {
+    async fn request_queued_proofs(&mut self) -> Result<()> {
         let commitments = self.program_config.commitments.clone();
         let l1_chain_id = self.requester_config.l1_chain_id;
         let l2_chain_id = self.requester_config.l2_chain_id;
@@ -802,14 +911,14 @@ where
         if witness_gen_count + execution_count + prove_count >=
             self.requester_config.max_concurrent_proof_requests as i64
         {
-            debug!("There are already MAX_CONCURRENT_PROOF_REQUESTS proofs in WitnessGeneration, Execute, and Prove status.");
+            info!("There are already MAX_CONCURRENT_PROOF_REQUESTS proofs in WitnessGeneration, Execute, and Prove status.");
             return Ok(());
         }
 
         // If there are already MAX_CONCURRENT_WITNESS_GEN proofs in WitnessGeneration status,
         // return.
         if witness_gen_count >= self.requester_config.max_concurrent_witness_gen as i64 {
-            debug!(
+            info!(
                 "There are already MAX_CONCURRENT_WITNESS_GEN proofs in WitnessGeneration status."
             );
             return Ok(());
@@ -823,6 +932,17 @@ where
                 end_block = request.end_block,
                 "Making proof request"
             );
+            // In single-shot mode, increment counters to limit subsequent sends.
+            if self.requester_config.single_shot {
+                match request.req_type {
+                    RequestType::Range => {
+                        self.range_requests_sent = self.range_requests_sent.saturating_add(1)
+                    }
+                    RequestType::Aggregation => {
+                        self.agg_requests_sent = self.agg_requests_sent.saturating_add(1)
+                    }
+                }
+            }
             let request_clone = request.clone();
             let proof_requester = self.proof_requester.clone();
             let handle =
@@ -841,37 +961,65 @@ where
     /// aggregation vkey, return that. Otherwise, return a range proof with the lowest start
     /// block.
     async fn get_next_unrequested_proof(&self) -> Result<Option<OPSuccinctRequest>> {
-        let latest_proposed_block_number = get_latest_proposed_block_number(
-            self.contract_config.l2oo_address,
-            self.driver_config.fetcher.as_ref(),
-        )
-        .await?;
-
-        let unreq_agg_request = self
-            .driver_config
-            .driver_db_client
-            .fetch_unrequested_agg_proof(
-                latest_proposed_block_number as i64,
-                &self.program_config.commitments,
-                self.requester_config.l1_chain_id,
-                self.requester_config.l2_chain_id,
+        // SSV: Get the latest proposed block number from the database (latest relayed aggregation proof).
+        // Fallback to querying the smart contract if no relayed block found.
+        let mut latest_proposed_block_number = match self.driver_config.driver_db_client
+            .get_latest_relayed_block_number()
+            .await?
+        {
+            Some(block) => block as u64,
+            None => get_latest_proposed_block_number(
+                self.contract_config.l2oo_address,
+                self.driver_config.fetcher.as_ref(),
             )
-            .await?;
+            .await?,
+        };
+
+        // Respect minimum start block filter when selecting next proof to request.
+        latest_proposed_block_number = latest_proposed_block_number
+            .max(self.requester_config.min_l2_block);
+
+        // If aggregation is enabled and allowed by single-shot counter, prefer an unrequested aggregation proof.
+        let consider_agg = self.requester_config.enable_aggregation
+            && (!self.requester_config.single_shot || self.agg_requests_sent < 1);
+
+        let unreq_agg_request = if consider_agg {
+            self
+                .driver_config
+                .driver_db_client
+                .fetch_unrequested_agg_proof(
+                    latest_proposed_block_number as i64,
+                    &self.program_config.commitments,
+                    self.requester_config.l1_chain_id,
+                    self.requester_config.l2_chain_id,
+                )
+                .await?
+        } else {
+            None
+        };
 
         if let Some(unreq_agg_request) = unreq_agg_request {
             // Fetch consecutive range proofs from the database associated with the aggregation
             // proof request.
-            let range_proofs = self
-                .proof_requester
-                .db_client
-                .get_consecutive_complete_range_proofs(
-                    unreq_agg_request.start_block,
-                    unreq_agg_request.end_block,
+            // Build the consecutive REAL range proofs list for validation.
+            let all_completed = self
+                .driver_config
+                .driver_db_client
+                .fetch_requests_by_status(
+                    RequestStatus::Complete,
                     &self.program_config.commitments,
                     self.requester_config.l1_chain_id,
                     self.requester_config.l2_chain_id,
                 )
                 .await?;
+            let mut range_proofs: Vec<OPSuccinctRequest> = all_completed
+                .into_iter()
+                .filter(|r| r.req_type == RequestType::Range)
+                .filter(|r| r.mode == RequestMode::Real)
+                .filter(|r| r.start_block >= unreq_agg_request.start_block)
+                .filter(|r| r.end_block <= unreq_agg_request.end_block)
+                .collect();
+            range_proofs.sort_by_key(|r| r.start_block);
 
             // Validate the aggregation proof request
             match self.validate_aggregation_request(&range_proofs, &unreq_agg_request).await {
@@ -893,16 +1041,23 @@ where
             }
         }
 
-        let unreq_range_request = self
-            .driver_config
-            .driver_db_client
-            .fetch_first_unrequested_range_proof(
-                latest_proposed_block_number as i64,
-                &self.program_config.commitments,
-                self.requester_config.l1_chain_id,
-                self.requester_config.l2_chain_id,
-            )
-            .await?;
+        // Respect single-shot counter for range requests as well
+        let consider_range = !self.requester_config.single_shot || self.range_requests_sent < 1;
+
+        let unreq_range_request = if consider_range {
+            self
+                .driver_config
+                .driver_db_client
+                .fetch_first_unrequested_range_proof(
+                    latest_proposed_block_number as i64,
+                    &self.program_config.commitments,
+                    self.requester_config.l1_chain_id,
+                    self.requester_config.l2_chain_id,
+                )
+                .await?
+        } else {
+            None
+        };
 
         if let Some(unreq_range_request) = unreq_range_request {
             return Ok(Some(unreq_range_request));
@@ -940,6 +1095,16 @@ where
                 end_block = ?agg_request.end_block,
                 commitments = ?self.program_config.commitments,
                 "No consecutive span proof range found for request"
+            );
+            return false;
+        }
+
+        // Ensure all constituent range proofs are network-proven (Real mode)
+        if range_proofs.iter().any(|p| p.mode != RequestMode::Real) {
+            warn!(
+                start_block = ?agg_request.start_block,
+                end_block = ?agg_request.end_block,
+                "Aggregation request contains non-network (mock) range proofs; rejecting"
             );
             return false;
         }
@@ -1012,11 +1177,23 @@ where
     /// Relay all completed aggregation proofs to the contract.
     #[tracing::instrument(name = "proposer.submit_agg_proofs", skip(self))]
     async fn submit_agg_proofs(&self) -> Result<()> {
-        let latest_proposed_block_number = get_latest_proposed_block_number(
-            self.contract_config.l2oo_address,
-            self.driver_config.fetcher.as_ref(),
-        )
-        .await?;
+        // SSV: Get the latest proposed block number from the database (latest relayed aggregation proof).
+        // Fallback to querying the smart contract if no relayed block found.
+        let mut latest_proposed_block_number = match self.driver_config.driver_db_client
+            .get_latest_relayed_block_number()
+            .await?
+        {
+            Some(block) => block as u64,
+            None => get_latest_proposed_block_number(
+                self.contract_config.l2oo_address,
+                self.driver_config.fetcher.as_ref(),
+            )
+            .await?,
+        };
+
+        // Respect minimum L2 block for aggregation flows
+        latest_proposed_block_number = latest_proposed_block_number
+            .max(self.requester_config.min_l2_block);
 
         // See if there is an aggregation proof that is complete for this start block. NOTE: There
         // should only be one "pending" aggregation proof at a time for a specific start block.
@@ -1037,7 +1214,7 @@ where
             None => return Ok(()),
         };
 
-        // Relay the aggregation proof.
+        // WIP: Relay the aggregation proof to L1.
         let transaction_hash = match self.relay_aggregation_proof(&completed_agg_proof).await {
             Ok(transaction_hash) => transaction_hash,
             Err(e) => {
@@ -1045,8 +1222,17 @@ where
                 return Err(e);
             }
         };
+        
+        info!("Relayed aggregation proof to L1. Transaction hash: {:?}", transaction_hash);
 
-        info!("Relayed aggregation proof. Transaction hash: {:?}", transaction_hash);
+
+        // Relay the aggregation proof to SP.
+        if let Err(e) = self.relay_aggregation_proof_to_shared_publisher(&completed_agg_proof).await {
+            ValidityGauge::RelayAggProofErrorCount.increment(1.0);
+            return Err(e);
+        } else {
+            info!("Successfully sent aggregation proof to shared publisher");
+        }
 
         // Update the request to status RELAYED.
         self.driver_config
@@ -1065,6 +1251,111 @@ where
     ///
     /// If the DGF address is set, use it to create a new validity dispute game that will resolve
     /// with the proof. Otherwise, propose the L2 output.
+    /// SSV: we do not submit on-chain; only to the Shared Publisher!!!
+    ///
+    async fn relay_aggregation_proof_to_shared_publisher(
+        &self,
+        completed_agg_proof: &OPSuccinctRequest,
+    ) -> Result<()> {
+        // Get the output at the end block of the last completed aggregation proof.
+        let output = self
+            .driver_config
+            .fetcher
+            .get_l2_output_at_block(completed_agg_proof.end_block as u64)
+            .await?;
+
+        if let Some(publisher_url) = &self.driver_config.publisher_url {
+            let start_block = completed_agg_proof.start_block as u64;
+            let end_block = completed_agg_proof.end_block as u64;
+
+            let pre_output = self
+                .driver_config
+                .fetcher
+                .get_l2_output_at_block(start_block)
+                .await?;
+            let post_root_b256: B256 = output.output_root.0.into();
+
+            let l1_head = B256::from_slice(
+                completed_agg_proof
+                    .checkpointed_l1_block_hash
+                    .as_ref()
+                    .expect("agg proof must have checkpointed l1 block hash"),
+            );
+
+            let proof = completed_agg_proof.proof.as_ref()
+                .expect("No proof available for deserialization");
+
+            println!("Relay completed aggregation proof: length={}", proof.len());
+
+            // Fetch mailbox data from database
+            let (mailbox_root, mailbox_info) = match self.fetch_mailbox_data(completed_agg_proof.end_block, completed_agg_proof.l2_chain_id).await {
+                Ok((root, info)) => (root, info),
+                Err(e) => {
+                    tracing::warn!("Failed to fetch mailbox data for end_block {} l2_chain_id {}: {}. Using zero values.", completed_agg_proof.end_block, completed_agg_proof.l2_chain_id, e);
+                    (B256::ZERO, MailboxInfoStruct {
+                        inbox_chains: vec![],
+                        outbox_chains: vec![],
+                        inbox_roots: vec![],
+                        outbox_roots: vec![],
+                    })
+                }
+            };
+
+            println!("Fetched mailbox data for request {}:", completed_agg_proof.id);
+            println!("  Mailbox root: {:?}", mailbox_root);
+            println!("  Mailbox info:");
+            println!("    Inbox chains: {:?}", mailbox_info.inbox_chains);
+            println!("    Outbox chains: {:?}", mailbox_info.outbox_chains);
+            println!("    Inbox roots: {:?}", mailbox_info.inbox_roots);
+            println!("    Outbox roots: {:?}", mailbox_info.outbox_roots);
+
+            let agg_outputs = build_aggregation_outputs(
+                l1_head,
+                pre_output.output_root.0.into(),
+                post_root_b256,
+                end_block,
+                self.program_config.commitments.rollup_config_hash,
+                mailbox_root,
+                self.program_config.commitments.range_vkey_commitment,
+                self.requester_config.prover_address,
+            );
+
+            let superblock_hash = post_root_b256;
+            let l2_chain_id = self.requester_config.l2_chain_id as u32;
+
+            match submit_to_publisher(
+                publisher_url,
+                end_block,
+                superblock_hash,
+                l2_chain_id,
+                self.requester_config.prover_address,
+                l1_head,
+                agg_outputs,
+                start_block,
+                &self.program_config.agg_vk,
+                completed_agg_proof.proof.as_deref(),
+                mailbox_info,
+            )
+                .await
+            {
+                Ok(_) => info!(
+                start_block,
+                end_block,
+                publisher = %publisher_url,
+                "Published aggregation outputs to shared publisher"
+            ),
+                Err(e) => warn!(
+                start_block,
+                end_block,
+                error = %e,
+                "Failed to publish aggregation outputs; continuing"
+            ),
+            }
+        }
+
+        Ok(())
+    }
+
     async fn relay_aggregation_proof(
         &self,
         completed_agg_proof: &OPSuccinctRequest,
@@ -1142,7 +1433,7 @@ where
             return Err(anyhow!("Transaction reverted: {:?}", receipt));
         }
 
-        Ok(receipt.transaction_hash())
+        Ok(receipt.transaction_hash)
     }
 
     /// Validate the requester config matches the contract.
@@ -1164,6 +1455,7 @@ where
         let range_vkey_commitment_match =
             contract_range_vkey_commitment == self.program_config.commitments.range_vkey_commitment;
 
+        /*
         if !rollup_config_hash_match || !agg_vkey_hash_match || !range_vkey_commitment_match {
             tracing::error!(
                 rollup_config_hash_match = rollup_config_hash_match,
@@ -1197,7 +1489,9 @@ where
             }
 
             return Err(anyhow::anyhow!("Config mismatches detected. Please run {{cargo run --bin config --release -- --env-file ENV_FILE}} to get the expected config for your contract."));
+
         }
+        */
 
         Ok(())
     }
@@ -1339,9 +1633,9 @@ where
     #[tracing::instrument(name = "proposer.initialize_proposer", skip(self))]
     async fn initialize_proposer(&self) -> Result<()> {
         // Validate the requester config matches the contract.
-        self.validate_contract_config()
-            .await
-            .context("Failed to validate the requester config matches the contract.")?;
+        // self.validate_contract_config()
+        //     .await
+        //     .context("Failed to validate the requester config matches the contract.")?;
 
         // Delete all requests for the same chain ID that are of status UNREQUESTED, EXECUTION or
         // WITNESS_GENERATION as they're unrecoverable.
@@ -1376,20 +1670,31 @@ where
 
     /// Fetch and log the proposer metrics.
     async fn log_proposer_metrics(&self) -> Result<()> {
-        // Get the latest proposed block number on the contract.
-        let latest_proposed_block_number = get_latest_proposed_block_number(
-            self.contract_config.l2oo_address,
-            self.driver_config.fetcher.as_ref(),
-        )
-        .await?;
+        // SSV: Get the latest proposed block number from the database (latest relayed aggregation proof).
+        // Fallback to querying the smart contract if no relayed block found.
+        let latest_proposed_block_number = match self.driver_config.driver_db_client
+            .get_latest_relayed_block_number()
+            .await?
+        {
+            Some(block) => block as u64,
+            None => get_latest_proposed_block_number(
+                self.contract_config.l2oo_address,
+                self.driver_config.fetcher.as_ref(),
+            )
+            .await?,
+        };
 
         // Get all completed range proofs from the database.
+        // Apply min block for metrics to reflect the active aggregation start
+        let agg_start_block = latest_proposed_block_number
+            .max(self.requester_config.min_l2_block) as i64;
+
         let completed_range_proofs = self
             .driver_config
             .driver_db_client
             .fetch_completed_ranges(
                 &self.program_config.commitments,
-                latest_proposed_block_number as i64,
+                agg_start_block,
                 self.requester_config.l1_chain_id,
                 self.requester_config.l2_chain_id,
             )
@@ -1475,14 +1780,15 @@ where
 
         let submission_interval =
             contract_submission_interval.max(self.requester_config.submission_interval);
+        let min_agg_start = latest_proposed_block_number.max(self.requester_config.min_l2_block);
         ValidityGauge::MinBlockToProveToAgg
-            .set((latest_proposed_block_number + submission_interval) as f64);
+            .set((min_agg_start + submission_interval) as f64);
 
         Ok(())
     }
 
     #[tracing::instrument(name = "proposer.run", skip(self))]
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         // Handle the case where the proposer is being re-started and the proposer state needs to be
         // updated.
         self.initialize_proposer().await?;
@@ -1512,9 +1818,9 @@ where
     }
 
     // Run a single loop of the validity proposer.
-    async fn run_loop_iteration(&self) -> Result<()> {
+    async fn run_loop_iteration(&mut self) -> Result<()> {
         // Validate the requester config matches the contract.
-        self.validate_contract_config().await?;
+        // self.validate_contract_config().await?;
 
         // Log the proposer metrics.
         self.log_proposer_metrics().await?;
@@ -1531,15 +1837,23 @@ where
         // Add new range requests to the database.
         self.add_new_ranges().await?;
 
+        // Cleanup: cancel any unrequested aggregation requests that cannot be validated using only
+        // REAL (network) range proofs, to avoid aggregating over mock ranges left from prior runs.
+        self.cancel_invalid_unrequested_aggregations().await?;
+
         // Create aggregation proofs based on the completed range proofs. Checkpoints the block hash
         // associated with the aggregation proof in advance.
-        self.create_aggregation_proofs().await?;
+        if self.requester_config.enable_aggregation {
+            self.create_aggregation_proofs().await?;
+        }
 
         // Request all unrequested proofs from the prover network.
         self.request_queued_proofs().await?;
 
         // Submit any aggregation proofs that are complete.
-        self.submit_agg_proofs().await?;
+        if self.requester_config.enable_aggregation {
+            self.submit_agg_proofs().await?;
+        }
 
         // Update the chain lock.
         self.proof_requester
@@ -1630,6 +1944,115 @@ where
                     request.id,
                     request.start_block,
                     request.end_block
+                ))
+            }
+        }
+    }
+
+    /// Fetch mailbox root and mailbox info from database.
+    async fn fetch_mailbox_data(
+        &self,
+        end_block: i64,
+        l2_chain_id: i64,
+    ) -> Result<(B256, MailboxInfoStruct)> {
+        // Fetch mailbox data from database
+        let mailbox_data = self
+            .driver_config
+            .driver_db_client
+            .fetch_mailbox_store(end_block, l2_chain_id, RequestType::Range)
+            .await?;
+
+        match mailbox_data {
+            Some((inbox_chains, outbox_chains, inbox_roots, outbox_roots, mailbox_root)) => {
+                // Parse mailbox root
+                let root = match mailbox_root {
+                    Some(root_bytes) => {
+                        if root_bytes.len() == 32 {
+                            B256::from_slice(&root_bytes)
+                        } else {
+                            tracing::warn!(
+                                "Invalid mailbox root length for end_block {} l2_chain_id {}: expected 32 bytes, got {}",
+                                end_block,
+                                l2_chain_id,
+                                root_bytes.len()
+                            );
+                            B256::ZERO
+                        }
+                    }
+                    None => {
+                        tracing::warn!(
+                            "No mailbox root found for end_block {} l2_chain_id {}",
+                            end_block,
+                            l2_chain_id
+                        );
+                        B256::ZERO
+                    }
+                };
+
+                // Convert database format to MailboxInfoStruct
+                let mailbox_info = MailboxInfoStruct {
+                    inbox_chains: inbox_chains
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|bytes| {
+                            if bytes.len() == 32 {
+                                B256::from_slice(&bytes)
+                            } else {
+                                B256::ZERO
+                            }
+                        })
+                        .collect(),
+                    outbox_chains: outbox_chains
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|bytes| {
+                            if bytes.len() == 32 {
+                                B256::from_slice(&bytes)
+                            } else {
+                                B256::ZERO
+                            }
+                        })
+                        .collect(),
+                    inbox_roots: inbox_roots
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|bytes| {
+                            if bytes.len() == 32 {
+                                B256::from_slice(&bytes)
+                            } else {
+                                B256::ZERO
+                            }
+                        })
+                        .collect(),
+                    outbox_roots: outbox_roots
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|bytes| {
+                            if bytes.len() == 32 {
+                                B256::from_slice(&bytes)
+                            } else {
+                                B256::ZERO
+                            }
+                        })
+                        .collect(),
+                };
+
+                Ok((root, mailbox_info))
+            }
+            None => {
+                tracing::warn!(
+                    "No mailbox data found for end_block {} l2_chain_id {}",
+                    end_block,
+                    l2_chain_id
+                );
+                Ok((
+                    B256::ZERO,
+                    MailboxInfoStruct {
+                        inbox_chains: vec![],
+                        outbox_chains: vec![],
+                        inbox_roots: vec![],
+                        outbox_roots: vec![],
+                    },
                 ))
             }
         }

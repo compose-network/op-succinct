@@ -29,14 +29,18 @@ fn main() {
         let witness_data = rkyv::from_bytes::<EigenDAWitnessData, Error>(&witness_rkyv_bytes)
             .expect("Failed to deserialize witness data.");
 
-        let (oracle, beacon) = witness_data
+        // Construct oracle and beacon from witness data for EigenDA preloading.
+        let (oracle, beacon, _mailbox_store) = witness_data
             .clone()
             .get_oracle_and_blob_provider()
             .await
             .expect("Failed to load oracle and blob provider");
 
         let eigenda_witness: EigenDAWitness = serde_cbor::from_slice(
-            &witness_data.eigenda_data.clone().expect("eigenda witness data is not present"),
+            &witness_data
+                .eigenda_data
+                .clone()
+                .expect("eigenda witness data is not present"),
         )
         .expect("cannot deserialize eigenda witness");
         let preloaded_preimage_provider = eigenda_witness_to_preloaded_provider(
@@ -49,7 +53,11 @@ fn main() {
         .await
         .expect("Failed to get preloaded blob provider");
 
-        run_range_program(EigenDAWitnessExecutor::new(preloaded_preimage_provider), oracle, beacon)
-            .await;
+        // Pass the full witness (including mailbox) into the unified run_range_program.
+        run_range_program(
+            EigenDAWitnessExecutor::new(preloaded_preimage_provider),
+            witness_data,
+        )
+        .await;
     });
 }

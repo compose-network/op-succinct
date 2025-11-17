@@ -13,3 +13,5 @@ extern crate alloc;
 pub mod client;
 
 pub mod witness;
+
+pub mod mailbox;

@@ -1,5 +1,8 @@
 pub mod executor;
 pub mod preimage_store;
+mod mailbox;
+
+pub use mailbox::{MailboxStore, compute_mailbox_root};
 
 use std::{fmt::Debug, sync::Arc};
 
@@ -12,17 +15,21 @@ use serde::{Deserialize, Serialize};
 use crate::BlobStore;
 
 #[async_trait]
-pub trait WitnessData: Sized {
-    /// Creates a new WitnessData from the given preimage store and blob data.
-    fn from_parts(preimage_store: PreimageStore, blob_data: BlobData) -> Self;
+pub trait WitnessData: Sized + Send {
+    /// Creates a new WitnessData from the given preimage store, blob data, and storage data.
+    fn from_parts(
+        preimage_store: PreimageStore, 
+        blob_data: BlobData,
+        mailbox_store: MailboxStore,
+    ) -> Self;
 
     /// Consumes the WitnessData to extract its core components.
-    fn into_parts(self) -> (PreimageStore, BlobData);
+    fn into_parts(self) -> (PreimageStore, BlobData, MailboxStore);
 
     /// Gets the oracle and blob provider from the witness data and validates the correctness of the
     /// preimages.
-    async fn get_oracle_and_blob_provider(self) -> Result<(Arc<PreimageStore>, BlobStore)> {
-        let (owned_preimage_store, owned_blob_data) = self.into_parts();
+    async fn get_oracle_and_blob_provider(self) -> Result<(Arc<PreimageStore>, BlobStore, MailboxStore)> {
+        let (owned_preimage_store, owned_blob_data, mailbox_store) = self.into_parts();
 
         println!("cycle-tracker-report-start: oracle-verify");
         // Check the preimages in the witness are valid.
@@ -37,7 +44,7 @@ pub trait WitnessData: Sized {
         let beacon = BlobStore::from(owned_blob_data);
         println!("cycle-tracker-report-end: blob-verification");
 
-        Ok((oracle, beacon))
+        Ok((oracle, beacon, mailbox_store))
     }
 }
 
@@ -45,16 +52,29 @@ pub trait WitnessData: Sized {
 pub struct DefaultWitnessData {
     pub preimage_store: PreimageStore,
     pub blob_data: BlobData,
+    pub mailbox_store: MailboxStore
 }
 
 #[async_trait]
 impl WitnessData for DefaultWitnessData {
-    fn from_parts(preimage_store: PreimageStore, blob_data: BlobData) -> Self {
-        Self { preimage_store, blob_data }
+    fn from_parts(
+        preimage_store: PreimageStore, 
+        blob_data: BlobData,
+        mailbox_store: MailboxStore,
+    ) -> Self {
+        Self { 
+            preimage_store, 
+            blob_data,
+            mailbox_store
+        }
     }
 
-    fn into_parts(self) -> (PreimageStore, BlobData) {
-        (self.preimage_store, self.blob_data)
+    fn into_parts(self) -> (PreimageStore, BlobData, MailboxStore) {
+        (
+            self.preimage_store, 
+            self.blob_data,
+            self.mailbox_store
+        )
     }
 }
 
@@ -69,12 +89,20 @@ pub struct EigenDAWitnessData {
 
 #[async_trait]
 impl WitnessData for EigenDAWitnessData {
-    fn from_parts(preimage_store: PreimageStore, blob_data: BlobData) -> Self {
+    fn from_parts(
+        preimage_store: PreimageStore,
+        blob_data: BlobData,
+        _mailbox_store: MailboxStore,
+    ) -> Self {
         Self { preimage_store, blob_data, eigenda_data: None }
     }
 
-    fn into_parts(self) -> (PreimageStore, BlobData) {
-        (self.preimage_store, self.blob_data)
+    fn into_parts(self) -> (PreimageStore, BlobData, MailboxStore) {
+        (
+            self.preimage_store,
+            self.blob_data,
+            MailboxStore::default(),
+        )
     }
 }
 

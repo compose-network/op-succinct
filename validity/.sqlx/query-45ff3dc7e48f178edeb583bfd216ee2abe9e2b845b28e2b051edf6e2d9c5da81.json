@@ -152,6 +152,31 @@
         "ordinal": 29,
         "name": "l1_head_block_number",
         "type_info": "Int8"
+      },
+      {
+        "ordinal": 30,
+        "name": "mailbox_inbox_chains",
+        "type_info": "ByteaArray"
+      },
+      {
+        "ordinal": 31,
+        "name": "mailbox_outbox_chains",
+        "type_info": "ByteaArray"
+      },
+      {
+        "ordinal": 32,
+        "name": "mailbox_inbox_roots",
+        "type_info": "ByteaArray"
+      },
+      {
+        "ordinal": 33,
+        "name": "mailbox_outbox_roots",
+        "type_info": "ByteaArray"
+      },
+      {
+        "ordinal": 34,
+        "name": "mailbox_root",
+        "type_info": "Bytea"
       }
     ],
     "parameters": {
@@ -193,6 +218,11 @@
       false,
       false,
       false,
+      true,
+      true,
+      true,
+      true,
+      true,
       true,
       true,
       true

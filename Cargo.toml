@@ -3,15 +3,15 @@ members = [
     "utils/client",
     "utils/host",
     "utils/build",
-    "utils/celestia/client",
-    "utils/celestia/host",
     "utils/eigenda/client",
     "utils/eigenda/host",
     "utils/proof",
     "utils/signer",
     "utils/ethereum/client",
     "utils/ethereum/host",
-    "programs/range/*",
+    "programs/range/eigenda",
+    "programs/range/ethereum",
+    "programs/range/utils",
     "programs/aggregation",
     "scripts/*",
     "validity",
@@ -122,8 +122,6 @@ op-succinct-validity = { path = "validity" }
 op-succinct-fp = { path = "fault-proof" }
 op-succinct-ethereum-client-utils = { path = "utils/ethereum/client" }
 op-succinct-ethereum-host-utils = { path = "utils/ethereum/host" }
-op-succinct-celestia-client-utils = { path = "utils/celestia/client" }
-op-succinct-celestia-host-utils = { path = "utils/celestia/host" }
 op-succinct-eigenda-client-utils = { path = "utils/eigenda/client" }
 op-succinct-eigenda-host-utils = { path = "utils/eigenda/host" }
 op-succinct-proof-utils = { path = "utils/proof" }

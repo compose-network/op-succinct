@@ -1,23 +1,20 @@
 use alloy_primitives::{Address, B256};
 use alloy_provider::Provider;
-use anyhow::{Context, Result};
+use anyhow::{anyhow,Context, Result};
 use op_succinct_client_utils::boot::BootInfoStruct;
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher, get_agg_proof_stdin, host::OPSuccinctHost,
     metrics::MetricsGauge, witness_generation::WitnessGenerator,
 };
-use op_succinct_proof_utils::get_range_elf_embedded;
+use op_succinct_proof_utils::{get_range_elf_embedded};
+use op_succinct_client_utils::witness::compute_mailbox_root;
 use sp1_sdk::{
     network::{proto::types::ExecutionStatus, FulfillmentStrategy},
     NetworkProver, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin, SP1_CIRCUIT_VERSION,
 };
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Instant, time::Duration};
 use tracing::{info, warn};
-
 use crate::{
     db::DriverDBClient, OPSuccinctRequest, ProgramConfig, RequestExecutionStatistics,
     RequestStatus, RequestType, ValidityGauge,
@@ -110,7 +107,49 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
                 .await?;
         }
 
-        let witness = self.host.run(&host_args).await?;
+        let (witness, mailbox_store) = self.host.run_with_mailbox(&host_args).await?;
+
+        println!("Mailbox store extracted:");
+        println!("  Inbox chains: {:?}", mailbox_store.decode_inbox_chains());
+        println!("  Outbox chains: {:?}", mailbox_store.decode_outbox_chains());
+        println!("  Inbox roots count: {}", mailbox_store.inbox_roots.len());
+        println!("  Outbox roots count: {}", mailbox_store.outbox_roots.len());
+
+        // Convert MailboxStore to database format
+        let inbox_chains: Option<Vec<Vec<u8>>> = if mailbox_store.inbox_chains.is_empty() {
+            None
+        } else {
+            Some(mailbox_store.inbox_chains.iter().map(|b| b.0.to_vec()).collect())
+        };
+
+        let outbox_chains: Option<Vec<Vec<u8>>> = if mailbox_store.outbox_chains.is_empty() {
+            None
+        } else {
+            Some(mailbox_store.outbox_chains.iter().map(|b| b.0.to_vec()).collect())
+        };
+
+        let inbox_roots: Option<Vec<Vec<u8>>> = if mailbox_store.inbox_roots.is_empty() {
+            None
+        } else {
+            Some(mailbox_store.inbox_roots.iter().map(|b| b.0.to_vec()).collect())
+        };
+
+        let outbox_roots: Option<Vec<Vec<u8>>> = if mailbox_store.outbox_roots.is_empty() {
+            None
+        } else {
+            Some(mailbox_store.outbox_roots.iter().map(|b| b.0.to_vec()).collect())
+        };
+
+        // Compute mailbox root from mailbox store
+        let mailbox_root = compute_mailbox_root(mailbox_store.clone());
+        let mailbox_root_bytes = Some(mailbox_root.to_vec());
+
+        self.db_client
+            .update_mailbox_store(request.id, inbox_chains, outbox_chains, inbox_roots, outbox_roots, mailbox_root_bytes)
+            .await?;
+
+        println!("Mailbox store data saved to database for request {}", request.id);
+
         let sp1_stdin = self.host.witness_generator().get_sp1_stdin(witness).unwrap();
 
         Ok(sp1_stdin)
@@ -205,7 +244,7 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         let proof_id = match self
             .network_prover
             .prove(&self.program_config.agg_pk, &stdin)
-            .mode(self.agg_mode)
+            .compressed()
             .strategy(self.agg_strategy)
             .timeout(Duration::from_secs(self.proving_timeout))
             .min_auction_period(self.min_auction_period)
@@ -244,10 +283,14 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         let network_prover = self.network_prover.clone();
         // Move the CPU-intensive operation to a dedicated thread.
         let (pv, report) = match tokio::task::spawn_blocking(move || {
+            // let mut stdout_bridge = GuestLogBridge::new(Level::INFO, "sp1::stdout");
+            // let mut stderr_bridge = GuestLogBridge::new(Level::WARN, "sp1::stderr");
             network_prover
                 .execute(get_range_elf_embedded(), &stdin)
                 .calculate_gas(true)
                 .deferred_proof_verification(false)
+                // .stdout(&mut stdout_bridge)
+                // .stderr(&mut stderr_bridge)
                 .run()
         })
         .await?
@@ -299,10 +342,14 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         let network_prover = self.network_prover.clone();
         // Move the CPU-intensive operation to a dedicated thread.
         let (pv, report) = match tokio::task::spawn_blocking(move || {
+            // let mut stdout_bridge = GuestLogBridge::new(Level::INFO, "sp1::stdout");
+            // let mut stderr_bridge = GuestLogBridge::new(Level::WARN, "sp1::stderr");
             network_prover
                 .execute(AGGREGATION_ELF, &stdin)
                 .calculate_gas(true)
                 .deferred_proof_verification(false)
+                // .stdout(&mut stdout_bridge)
+                // .stderr(&mut stderr_bridge)
                 .run()
         })
         .await?
@@ -531,7 +578,14 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
             RequestType::Aggregation => {
                 if self.mock {
                     let proof = self.generate_mock_agg_proof(&request, stdin).await?;
-                    self.db_client.update_proof_to_complete(request.id, &proof.bytes()).await?;
+
+                    let proof_bytes = match proof.proof {
+                        SP1Proof::Compressed(_) => bincode::serialize(&proof).unwrap(),
+                        SP1Proof::Groth16(_) | SP1Proof::Plonk(_) => proof.bytes(),
+                        SP1Proof::Core(_) => return Err(anyhow!("Core proofs are not supported.")),
+                    };
+
+                    self.db_client.update_proof_to_complete(request.id, &proof_bytes).await?;
                 } else {
                     let proof_id = self.request_agg_proof(stdin).await?;
                     self.db_client.update_request_to_prove(request.id, proof_id).await?;

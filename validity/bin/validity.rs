@@ -80,6 +80,9 @@ async fn main() -> Result<()> {
         range_gas_limit: env_config.range_gas_limit,
         agg_cycle_limit: env_config.agg_cycle_limit,
         agg_gas_limit: env_config.agg_gas_limit,
+        min_l2_block: env_config.min_l2_block,
+        enable_aggregation: env_config.enable_aggregation,
+        single_shot: env_config.single_shot,
         whitelist: env_config.whitelist,
         min_auction_period: env_config.min_auction_period,
         auction_timeout: env_config.auction_timeout,
@@ -89,7 +92,7 @@ async fn main() -> Result<()> {
 
     let host = initialize_host(fetcher.clone().into());
 
-    let proposer = Proposer::new(
+    let mut proposer = Proposer::new(
         l1_provider,
         db_client.clone(),
         fetcher.into(),

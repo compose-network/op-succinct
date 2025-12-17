@@ -1214,19 +1214,22 @@ where
             None => return Ok(()),
         };
 
-        // WIP: Relay the aggregation proof to L1.
-        let transaction_hash = match self.relay_aggregation_proof(&completed_agg_proof).await {
-            Ok(transaction_hash) => transaction_hash,
-            Err(e) => {
-                ValidityGauge::RelayAggProofErrorCount.increment(1.0);
-                return Err(e);
-            }
-        };
-        
-        info!("Relayed aggregation proof to L1. Transaction hash: {:?}", transaction_hash);
+        // PRODUCTION: Direct L1 relay is disabled. The Shared Publisher handles L1 submission.
+        // The custom Compose DGF contract does not have the standard initBonds() function,
+        // which causes relay_aggregation_proof() to fail. Instead, we send proofs exclusively
+        // to the Shared Publisher, which aggregates per-rollup proofs into a superblock proof
+        // and submits to L1 on our behalf.
+        //
+        // let transaction_hash = match self.relay_aggregation_proof(&completed_agg_proof).await {
+        //     Ok(transaction_hash) => transaction_hash,
+        //     Err(e) => {
+        //         ValidityGauge::RelayAggProofErrorCount.increment(1.0);
+        //         return Err(e);
+        //     }
+        // };
+        // info!("Relayed aggregation proof to L1. Transaction hash: {:?}", transaction_hash);
 
-
-        // Relay the aggregation proof to SP.
+        // Relay the aggregation proof to Shared Publisher.
         if let Err(e) = self.relay_aggregation_proof_to_shared_publisher(&completed_agg_proof).await {
             ValidityGauge::RelayAggProofErrorCount.increment(1.0);
             return Err(e);
@@ -1234,12 +1237,12 @@ where
             info!("Successfully sent aggregation proof to shared publisher");
         }
 
-        // Update the request to status RELAYED.
+        // Update the request to status RELAYED (using zero hash since L1 relay is handled by Shared Publisher).
         self.driver_config
             .driver_db_client
             .update_request_to_relayed(
                 completed_agg_proof.id,
-                transaction_hash,
+                B256::ZERO,
                 self.contract_config.l2oo_address,
             )
             .await?;
